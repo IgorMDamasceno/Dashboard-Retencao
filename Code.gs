@@ -4,6 +4,7 @@ const TRAFFIC_SHEET = 'Config - Trafego';
 const REVSHARE_SHEET = 'Config - RevShare';
 const TRAFFIC_TYPES = ['Automação', 'Broadcast', 'Push'];
 const DISTRIBUTION_STATE_SHEET = 'Controle - Distribuição';
+const DISTRIBUTION_CONFIG_SHEET = 'Config - Distribuição';
 
 function doGet() {
   return HtmlService.createTemplateFromFile('index')
@@ -187,12 +188,36 @@ function getDashboardData(params) {
   const siteSummary = buildSiteSummary_(filteredRows, hoursInfo, snapshot.revshareMap);
   const urlRows = filterRowsForWindow_(filteredRows, hoursInfo, window);
   const urlSummary = buildUrlSummary_(urlRows, snapshot.revshareMap);
+
+  var savedControls = getDistributionControlsConfig_(operationName, trafficType);
+  var distributionParams = {};
+  if (savedControls) {
+    Object.keys(savedControls).forEach(function (key) {
+      var value = savedControls[key];
+      if (value != null && value !== '') {
+        distributionParams[key] = value;
+      }
+    });
+  }
+  if (params.distribution) {
+    Object.keys(params.distribution).forEach(function (key) {
+      var value = params.distribution[key];
+      if (value != null && value !== '') {
+        distributionParams[key] = value;
+      }
+    });
+  }
+
   const distribution = buildDistributionPlan_(
     filteredRows,
     hoursInfo,
     snapshot.revshareMap,
-    params.distribution
+    distributionParams
   );
+
+  if (params.distribution && Object.keys(params.distribution).length) {
+    saveDistributionControlsConfig_(operationName, trafficType, distribution.controls);
+  }
   return {
     filters: {
       operation: operationName,
@@ -574,7 +599,16 @@ function buildEmptyDistribution_() {
     selectedSite: '',
     latestHour: '',
     totalSessions: controls.totalSessions,
-    hours: []
+    hours: [],
+    globalUrls: {
+      entries: [],
+      all: [],
+      averageShare: 0,
+      activeCount: 0,
+      totalCount: 0,
+      targetRecipients: 0,
+      limitApplied: false
+    }
   };
 }
 
@@ -652,7 +686,15 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
       latestHour: hoursInfo && hoursInfo.latestHourLabel ? hoursInfo.latestHourLabel : '',
       totalSessions: controls.totalSessions,
       hours: windowHours.map(function (hour) { return hour.label; }),
-      globalUrls: { more: [], less: [], all: [], averageShare: 0 }
+      globalUrls: {
+        entries: [],
+        all: [],
+        averageShare: 0,
+        activeCount: 0,
+        totalCount: 0,
+        targetRecipients: 0,
+        limitApplied: false
+      }
     };
   }
 
@@ -850,7 +892,15 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
       latestHour: hoursInfo && hoursInfo.latestHourLabel ? hoursInfo.latestHourLabel : '',
       totalSessions: controls.totalSessions,
       hours: windowHours.map(function (hour) { return hour.label; }),
-      globalUrls: { more: [], less: [], all: [], averageShare: 0 }
+      globalUrls: {
+        entries: [],
+        all: [],
+        averageShare: 0,
+        activeCount: 0,
+        totalCount: 0,
+        targetRecipients: 0,
+        limitApplied: false
+      }
     };
   }
 
@@ -1066,7 +1116,7 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
 
   var targetRecipients = Math.max(0, Math.round(controls.urlTargetRecipients || 0));
   var limitApplied = false;
-  if (targetRecipients > 0 && globalAggregates.length > targetRecipients) {
+  if (!controls.urlRequireAll && targetRecipients > 0 && globalAggregates.length > targetRecipients) {
     limitApplied = true;
     var selectedKeys = {};
     globalAggregates.forEach(function (row) {
@@ -1179,41 +1229,20 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
     return (b.suggestedGlobalShare || 0) - (a.suggestedGlobalShare || 0);
   });
   var activeCount = sortedGlobal.filter(function (row) { return (row.suggestedGlobalShare || 0) > 0; }).length;
-  var averageGlobalShare = activeCount ? 1 / activeCount : (sortedGlobal.length ? 1 / sortedGlobal.length : 0);
-  var requiredTop = controls.urlRequireAll ? sortedGlobal.length : Math.min(sortedGlobal.length, Math.max(0, controls.urlMinRecipients));
-  if (targetRecipients > 0) {
-    requiredTop = Math.min(requiredTop, targetRecipients);
-  }
-  var globalMore = [];
-  var globalLess = [];
-  sortedGlobal.forEach(function (row, index) {
-    var share = row.suggestedGlobalShare || 0;
-    var qualifies = index < requiredTop || share >= averageGlobalShare || row.guaranteed;
-    if (share <= 0 && !row.guaranteed) {
-      qualifies = false;
-    }
-    if (qualifies) {
-      globalMore.push(row);
-    } else {
-      globalLess.push(row);
-    }
+  var totalCount = sortedGlobal.length;
+  var averageGlobalShare = activeCount ? 1 / activeCount : (totalCount ? 1 / totalCount : 0);
+  var displayEntries = sortedGlobal.filter(function (row) {
+    return (row.suggestedGlobalShare || 0) > 0;
   });
-  if (!globalMore.length && sortedGlobal.length) {
-    globalMore.push(sortedGlobal[0]);
-  }
-  if (!globalLess.length && globalMore.length < sortedGlobal.length) {
-    sortedGlobal.forEach(function (row) {
-      if (globalMore.indexOf(row) === -1) {
-        globalLess.push(row);
-      }
-    });
+  if (!displayEntries.length) {
+    displayEntries = sortedGlobal.slice();
   }
   var globalSummary = {
-    more: globalMore,
-    less: globalLess,
+    entries: displayEntries,
     all: sortedGlobal,
     averageShare: averageGlobalShare,
     activeCount: activeCount,
+    totalCount: totalCount,
     targetRecipients: targetRecipients,
     limitApplied: limitApplied
   };
@@ -1440,6 +1469,111 @@ function ensureDistributionSheet_() {
   sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
   sheet.setFrozenRows(1);
   return sheet;
+}
+
+function ensureDistributionConfigSheet_() {
+  var ss = SpreadsheetApp.getActive();
+  var sheet = ss.getSheetByName(DISTRIBUTION_CONFIG_SHEET);
+  if (!sheet) {
+    sheet = ss.insertSheet(DISTRIBUTION_CONFIG_SHEET);
+  }
+  var defaults = getDefaultDistributionControls_();
+  var headers = ['Operação', 'Tráfego'];
+  Object.keys(defaults).forEach(function (key) {
+    headers.push(key);
+  });
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  sheet.setFrozenRows(1);
+  return sheet;
+}
+
+function getDistributionControlsConfig_(operation, traffic) {
+  if (!operation || !traffic) {
+    return {};
+  }
+  var sheet = ensureDistributionConfigSheet_();
+  var lastRow = sheet.getLastRow();
+  var lastCol = sheet.getLastColumn();
+  if (lastRow < 2 || lastCol < 1) {
+    return {};
+  }
+  var values = sheet.getRange(1, 1, lastRow, lastCol).getValues();
+  var headers = values[0];
+  var idx = getHeaderIndexMap_(headers);
+  var opIndex = idx.operacao;
+  var trafficIndex = idx.trafego;
+  if (opIndex == null || trafficIndex == null) {
+    return {};
+  }
+  var targetRow = null;
+  for (var i = 1; i < values.length; i++) {
+    var row = values[i];
+    if (!row || row.join('').trim() === '') continue;
+    var rowOp = String(row[opIndex] || '').trim();
+    var rowTraffic = String(row[trafficIndex] || '').trim();
+    if (rowOp && rowTraffic && rowOp.toLowerCase() === String(operation).trim().toLowerCase() && rowTraffic.toLowerCase() === String(traffic).trim().toLowerCase()) {
+      targetRow = row;
+      break;
+    }
+  }
+  if (!targetRow) {
+    return {};
+  }
+  var defaults = getDefaultDistributionControls_();
+  var controls = {};
+  Object.keys(defaults).forEach(function (key) {
+    var normalized = normalizeKey_(key);
+    var columnIndex = idx[normalized];
+    if (columnIndex == null) return;
+    controls[key] = toNumber_(targetRow[columnIndex]);
+  });
+  return controls;
+}
+
+function saveDistributionControlsConfig_(operation, traffic, controls) {
+  if (!operation || !traffic || !controls) {
+    return;
+  }
+  var sheet = ensureDistributionConfigSheet_();
+  var defaults = getDefaultDistributionControls_();
+  var lastCol = sheet.getLastColumn();
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var idx = getHeaderIndexMap_(headers);
+  var opIndex = idx.operacao;
+  var trafficIndex = idx.trafego;
+  if (opIndex == null || trafficIndex == null) {
+    return;
+  }
+  var lastRow = sheet.getLastRow();
+  var rangeValues = lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, lastCol).getValues() : [];
+  var rowNumber = -1;
+  for (var i = 0; i < rangeValues.length; i++) {
+    var row = rangeValues[i];
+    var rowOp = String(row[opIndex] || '').trim();
+    var rowTraffic = String(row[trafficIndex] || '').trim();
+    if (rowOp && rowTraffic && rowOp.toLowerCase() === String(operation).trim().toLowerCase() && rowTraffic.toLowerCase() === String(traffic).trim().toLowerCase()) {
+      rowNumber = i + 2;
+      break;
+    }
+  }
+  var rowValues = new Array(headers.length);
+  for (var h = 0; h < headers.length; h++) {
+    rowValues[h] = '';
+  }
+  rowValues[opIndex] = String(operation).trim();
+  rowValues[trafficIndex] = String(traffic).trim();
+  Object.keys(defaults).forEach(function (key) {
+    var normalized = normalizeKey_(key);
+    var columnIndex = idx[normalized];
+    if (columnIndex == null) return;
+    var value = controls.hasOwnProperty(key) ? controls[key] : defaults[key];
+    rowValues[columnIndex] = value != null && value !== '' ? Number(value) : defaults[key];
+  });
+  if (rowNumber > -1) {
+    sheet.getRange(rowNumber, 1, 1, rowValues.length).setValues([rowValues]);
+  } else {
+    sheet.appendRow(rowValues);
+  }
 }
 
 function refreshRevShareSites_() {
