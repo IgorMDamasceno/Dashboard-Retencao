@@ -482,9 +482,10 @@ function buildUrlSummary_(rows, revshareMap) {
     var revshare = toNumber_(revshareMap[row.site] || 0) / 100;
     var adjustedRevenue = row.revenue * (1 - revshare);
     data.revenue += adjustedRevenue;
+    var rowCoverageRatio = row.coverage > 1 ? row.coverage / 100 : row.coverage;
     if (row.isInterstitial) {
       data.sessions += row.requests;
-      data.coverageWeighted += row.coverage * row.requests;
+      data.coverageWeighted += rowCoverageRatio * row.requests;
       data.ecpmWeighted += (row.ecpm * (1 - revshare)) * row.requests;
       data.weightedRequests += row.requests;
     }
@@ -502,7 +503,8 @@ function buildUrlSummary_(rows, revshareMap) {
   }).sort(function (a, b) {
     return b.revenue - a.revenue;
   }).forEach(function (data) {
-    var coverage = data.weightedRequests ? data.coverageWeighted / data.weightedRequests : 0;
+    var avgCoverageRatio = data.weightedRequests ? data.coverageWeighted / data.weightedRequests : 0;
+    var coverage = avgCoverageRatio * 100;
     var ecpm = data.weightedRequests ? data.ecpmWeighted / data.weightedRequests : 0;
     rowsOut.push({
       url: data.url,
@@ -512,7 +514,7 @@ function buildUrlSummary_(rows, revshareMap) {
       rps: computeRps_(data.revenue, data.sessions),
       coverage: coverage,
       ecpm: ecpm,
-      effectiveEcpm: ecpm * (coverage / 100)
+      effectiveEcpm: ecpm * avgCoverageRatio
     });
     totals.sessions += data.sessions;
     totals.revenue += data.revenue;
@@ -522,7 +524,8 @@ function buildUrlSummary_(rows, revshareMap) {
   });
   var totalsRow = null;
   if (rowsOut.length) {
-    var totalsCoverage = totals.weightedRequests ? totals.coverageWeighted / totals.weightedRequests : 0;
+    var totalsCoverageRatio = totals.weightedRequests ? totals.coverageWeighted / totals.weightedRequests : 0;
+    var totalsCoverage = totalsCoverageRatio * 100;
     var totalsEcpm = totals.weightedRequests ? totals.ecpmWeighted / totals.weightedRequests : 0;
     totalsRow = {
       sessions: totals.sessions,
@@ -530,7 +533,7 @@ function buildUrlSummary_(rows, revshareMap) {
       rps: computeRps_(totals.revenue, totals.sessions),
       coverage: totalsCoverage,
       ecpm: totalsEcpm,
-      effectiveEcpm: totalsEcpm * (totalsCoverage / 100)
+      effectiveEcpm: totalsEcpm * totalsCoverageRatio
     };
   }
   return {

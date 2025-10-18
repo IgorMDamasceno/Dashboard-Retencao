@@ -58,6 +58,17 @@
     .toast.hide { animation: toast-out 0.4s ease-in forwards; }
     @keyframes toast-in { from { opacity: 0; transform: translateX(40px); } to { opacity: 1; transform: translateX(0); } }
     @keyframes toast-out { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(40px); } }
+    .sort-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      color: inherit;
+      width: 100%;
+    }
+    .sort-button .sort-indicator {
+      font-size: 0.65rem;
+      opacity: 0.7;
+    }
   </style>
 </head>
 <body class="text-slate-200">
@@ -260,6 +271,10 @@
           startDate: '',
           endDate: '',
           window: 'day'
+        },
+        sort: {
+          site: { key: 'totalRevenue', direction: 'desc' },
+          url: { key: 'revenue', direction: 'desc' }
         },
         analysis: null
       };
@@ -670,13 +685,114 @@
           document.getElementById('latest-info').textContent = '';
           return;
         }
-        document.getElementById('latest-info').textContent = data.filters && data.filters.latestHour ? ('Última hora descartada: ' + data.filters.latestHour) : '';
+        var infoParts = [];
+        if (data.filters && data.filters.latestHour) {
+          infoParts.push('Última hora descartada: ' + data.filters.latestHour);
+        }
+        if (data.site && data.site.hours && data.site.hours.length) {
+          var hoursLabels = data.site.hours.map(function (hour) { return hour.label; });
+          if (hoursLabels.length) {
+            infoParts.push('Horas exibidas: ' + hoursLabels.join(', '));
+          }
+        }
+        document.getElementById('latest-info').textContent = infoParts.join(' • ');
         if (siteRows) {
           wrapper.appendChild(renderSiteCard(data.site));
         }
         if (urlRows) {
           wrapper.appendChild(renderUrlCard(data.url, data.filters));
         }
+      }
+
+      function getSortState(section) {
+        return state.sort && state.sort[section] ? state.sort[section] : null;
+      }
+
+      function setSort(section, key) {
+        if (!state.sort) state.sort = {};
+        var current = state.sort[section];
+        var direction = 'desc';
+        if (current && current.key === key) {
+          direction = current.direction === 'desc' ? 'asc' : 'desc';
+        }
+        state.sort[section] = { key: key, direction: direction };
+        renderAnalysis();
+      }
+
+      function buildSortHeader(section, key, label, alignment) {
+        var sortState = getSortState(section);
+        var indicator = '\u2195';
+        if (sortState && sortState.key === key) {
+          indicator = sortState.direction === 'asc' ? '\u25B2' : '\u25BC';
+        }
+        var justify = 'justify-start';
+        if (alignment === 'center') {
+          justify = 'justify-center';
+        } else if (alignment === 'right') {
+          justify = 'justify-end';
+        }
+        return '<button type="button" class="sort-button ' + justify + '" data-sort-section="' + section + '" data-sort-key="' + key + '">' + escapeHtml(label) + '<span class="sort-indicator">' + indicator + '</span></button>';
+      }
+
+      function attachSortHandlers(container) {
+        var buttons = container.querySelectorAll('[data-sort-section]');
+        Array.prototype.forEach.call(buttons, function (button) {
+          button.addEventListener('click', function (ev) {
+            ev.preventDefault();
+            var section = button.getAttribute('data-sort-section');
+            var key = button.getAttribute('data-sort-key');
+            setSort(section, key);
+          });
+        });
+      }
+
+      function sortSiteRows(rows) {
+        var sortState = getSortState('site');
+        if (!sortState) return rows.slice();
+        var multiplier = sortState.direction === 'asc' ? 1 : -1;
+        var key = sortState.key;
+        return rows.slice().sort(function (a, b) {
+          var av = getSiteSortValue(a, key);
+          var bv = getSiteSortValue(b, key);
+          if (typeof av === 'string' || typeof bv === 'string') {
+            return av.localeCompare(bv) * multiplier;
+          }
+          return (av - bv) * multiplier;
+        });
+      }
+
+      function getSiteSortValue(row, key) {
+        if (key === 'site') return (row.site || '').toLowerCase();
+        if (key === 'totalSessions') return Number(row.totalSessions || 0);
+        if (key === 'totalRevenue') return Number(row.totalRevenue || 0);
+        if (key === 'totalRps') return Number(row.totalRps || 0);
+        return 0;
+      }
+
+      function sortUrlRows(rows) {
+        var sortState = getSortState('url');
+        if (!sortState) return rows.slice();
+        var multiplier = sortState.direction === 'asc' ? 1 : -1;
+        var key = sortState.key;
+        return rows.slice().sort(function (a, b) {
+          var av = getUrlSortValue(a, key);
+          var bv = getUrlSortValue(b, key);
+          if (typeof av === 'string' || typeof bv === 'string') {
+            return av.localeCompare(bv) * multiplier;
+          }
+          return (av - bv) * multiplier;
+        });
+      }
+
+      function getUrlSortValue(row, key) {
+        if (key === 'url') return (row.url || '').toLowerCase();
+        if (key === 'sessions') return Number(row.sessions || 0);
+        if (key === 'revenue') return Number(row.revenue || 0);
+        if (key === 'rps') return Number(row.rps || 0);
+        if (key === 'coverage') return Number(row.coverage || 0);
+        if (key === 'ecpm') return Number(row.ecpm || 0);
+        if (key === 'effectiveEcpm') return Number(row.effectiveEcpm || 0);
+        return 0;
       }
 
       function renderSiteCard(siteData) {
@@ -695,16 +811,17 @@
         }
         var hours = siteData.hours || [];
         var hoursHeaders = hours.map(function (h) { return h.label; });
+        var rows = sortSiteRows(siteData.rows || []);
         var table = document.createElement('div');
         table.className = 'overflow-auto';
         var html = '';
         html += '<table class="w-full text-sm min-w-max">';
         html += '<thead class="text-slate-300">';
         html += '<tr>' +
-          '<th rowspan="2" class="px-3 py-2 text-left font-semibold">Site</th>' +
-          '<th colspan="' + (hoursHeaders.length + 1) + '" class="px-3 py-2 text-center font-semibold">Sessões</th>' +
-          '<th colspan="' + (hoursHeaders.length + 1) + '" class="px-3 py-2 text-center font-semibold">Receita ($)</th>' +
-          '<th colspan="' + (hoursHeaders.length + 1) + '" class="px-3 py-2 text-center font-semibold">RPS ($)</th>' +
+          '<th rowspan="2" class="px-3 py-2 text-left font-semibold align-middle">' + buildSortHeader('site', 'site', 'Site', 'left') + '</th>' +
+          '<th colspan="' + (hoursHeaders.length + 1) + '" class="px-3 py-2 text-center font-semibold">' + buildSortHeader('site', 'totalSessions', 'Sessões', 'center') + '</th>' +
+          '<th colspan="' + (hoursHeaders.length + 1) + '" class="px-3 py-2 text-center font-semibold">' + buildSortHeader('site', 'totalRevenue', 'Receita ($)', 'center') + '</th>' +
+          '<th colspan="' + (hoursHeaders.length + 1) + '" class="px-3 py-2 text-center font-semibold">' + buildSortHeader('site', 'totalRps', 'RPS ($)', 'center') + '</th>' +
           '</tr>';
         html += '<tr>';
         hoursHeaders.forEach(function (h) { html += '<th class="px-3 py-2 font-medium text-center">' + h + '</th>'; });
@@ -716,7 +833,7 @@
         html += '</tr>';
         html += '</thead>';
         html += '<tbody class="divide-y divide-slate-800/60">';
-        (siteData.rows || []).forEach(function (row) {
+        rows.forEach(function (row) {
           html += '<tr>';
           html += '<td class="px-3 py-2 font-medium text-slate-100">' + escapeHtml(row.site) + '</td>';
           hours.forEach(function (hour) {
@@ -753,6 +870,7 @@
         html += '</tbody></table>';
         table.innerHTML = html;
         card.appendChild(table);
+        attachSortHandlers(card);
         return card;
       }
 
@@ -782,26 +900,25 @@
           card.appendChild(empty);
           return card;
         }
+        var rows = sortUrlRows(urlData.rows || []);
         var table = document.createElement('div');
         table.className = 'overflow-auto';
         var html = '';
         html += '<table class="w-full text-sm min-w-max">';
         html += '<thead class="text-slate-300">';
         html += '<tr>' +
-          '<th class="px-3 py-2 text-left font-semibold">URL</th>' +
-          '<th class="px-3 py-2 text-left font-semibold">Site</th>' +
-          '<th class="px-3 py-2 text-right font-semibold">Sessões</th>' +
-          '<th class="px-3 py-2 text-right font-semibold">Receita ($)</th>' +
-          '<th class="px-3 py-2 text-right font-semibold">RPS ($)</th>' +
-          '<th class="px-3 py-2 text-right font-semibold">Cobertura (%)</th>' +
-          '<th class="px-3 py-2 text-right font-semibold">eCPM ($)</th>' +
-          '<th class="px-3 py-2 text-right font-semibold">eCPM Efetivo ($)</th>' +
+          '<th class="px-3 py-2 text-left font-semibold">' + buildSortHeader('url', 'url', 'URL', 'left') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('url', 'sessions', 'Sessões', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('url', 'revenue', 'Receita ($)', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('url', 'rps', 'RPS ($)', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('url', 'coverage', 'Cobertura (%)', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('url', 'ecpm', 'eCPM ($)', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('url', 'effectiveEcpm', 'eCPM Efetivo ($)', 'right') + '</th>' +
           '</tr>';
         html += '</thead><tbody class="divide-y divide-slate-800/60">';
-        urlData.rows.forEach(function (row) {
+        rows.forEach(function (row) {
           html += '<tr>' +
             '<td class="px-3 py-2 text-sky-300 break-all">' + escapeHtml(row.url || '') + '</td>' +
-            '<td class="px-3 py-2">' + escapeHtml(row.site || '') + '</td>' +
             '<td class="px-3 py-2 text-right">' + formatNumber(row.sessions) + '</td>' +
             '<td class="px-3 py-2 text-right">' + formatCurrency(row.revenue) + '</td>' +
             '<td class="px-3 py-2 text-right">' + formatCurrency(row.rps) + '</td>' +
@@ -812,7 +929,7 @@
         });
         if (urlData.totals) {
           html += '<tr class="bg-slate-900/60 text-slate-100 font-semibold">' +
-            '<td class="px-3 py-2" colspan="2">Total</td>' +
+            '<td class="px-3 py-2">Total</td>' +
             '<td class="px-3 py-2 text-right">' + formatNumber(urlData.totals.sessions) + '</td>' +
             '<td class="px-3 py-2 text-right">' + formatCurrency(urlData.totals.revenue) + '</td>' +
             '<td class="px-3 py-2 text-right">' + formatCurrency(urlData.totals.rps) + '</td>' +
@@ -824,6 +941,7 @@
         html += '</tbody></table>';
         table.innerHTML = html;
         card.appendChild(table);
+        attachSortHandlers(card);
         return card;
       }
 
