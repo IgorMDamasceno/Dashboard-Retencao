@@ -328,13 +328,22 @@
         },
         sort: {
           site: { key: 'totalRevenue', direction: 'desc' },
-          url: { key: 'revenue', direction: 'desc' }
+          url: { key: 'revenue', direction: 'desc' },
+          distributionSites: { key: 'suggestedShare', direction: 'desc' },
+          distributionUrls: { key: 'suggestedShare', direction: 'desc' }
         },
         search: {
           operations: '',
           traffics: '',
           revshare: '',
           url: ''
+        },
+        analysisTab: 'overview',
+        distribution: {
+          params: null,
+          selectedSite: '',
+          urlSearch: '',
+          dirty: false
         },
         analysis: null
       };
@@ -804,6 +813,7 @@
           .withSuccessHandler(function (data) {
             showLoading(false);
             state.analysis = data;
+            syncDistributionState(data && data.distribution, true);
             renderAnalysis();
           })
           .withFailureHandler(handleError)
@@ -812,7 +822,8 @@
             traffic: traffic,
             startDate: startDate,
             endDate: endDate,
-            urlWindow: window
+            urlWindow: window,
+            distribution: getDistributionPayload()
           });
       }
 
@@ -822,11 +833,78 @@
         var data = state.analysis;
         var siteRows = data && data.site && data.site.rows ? data.site.rows.length : 0;
         var urlRows = data && data.url && data.url.rows ? data.url.rows.length : 0;
-        if (!data || (!siteRows && !urlRows)) {
+        var distributionRows = data && data.distribution && data.distribution.sites ? data.distribution.sites.length : 0;
+        if (!data || (!siteRows && !urlRows && !distributionRows)) {
           wrapper.innerHTML = '<div class="card rounded-2xl p-6 text-center text-slate-400">Nenhum dado encontrado para os filtros selecionados.</div>';
           document.getElementById('latest-info').textContent = '';
           return;
         }
+        if (data && data.distribution) {
+          syncDistributionState(data.distribution);
+        }
+        wrapper.appendChild(renderAnalysisTabs(data));
+        if (state.analysisTab === 'distribution') {
+          document.getElementById('latest-info').textContent = buildDistributionInfo(data && data.distribution);
+          renderDistributionView(data && data.distribution, wrapper);
+          return;
+        }
+        if (siteRows || urlRows) {
+          document.getElementById('latest-info').textContent = buildOverviewInfo(data);
+        } else {
+          document.getElementById('latest-info').textContent = '';
+        }
+        if (!siteRows && !urlRows) {
+          var emptyOverview = document.createElement('div');
+          emptyOverview.className = 'card rounded-2xl p-6 text-center text-slate-400';
+          emptyOverview.textContent = 'Sem dados de resumo para os filtros selecionados.';
+          wrapper.appendChild(emptyOverview);
+          return;
+        }
+        if (siteRows) {
+          wrapper.appendChild(renderSiteCard(data.site));
+        }
+        if (urlRows) {
+          wrapper.appendChild(renderUrlCard(data.url, data.filters));
+        }
+      }
+
+      function renderAnalysisTabs(data) {
+        var tabsCard = document.createElement('div');
+        tabsCard.className = 'card rounded-2xl p-2 flex flex-wrap gap-2';
+        var hasOverview = data && data.site && data.site.rows && data.site.rows.length;
+        hasOverview = hasOverview || (data && data.url && data.url.rows && data.url.rows.length);
+        var hasDistribution = data && data.distribution && data.distribution.sites && data.distribution.sites.length;
+        var tabs = [
+          { id: 'overview', label: 'Resumo de desempenho', available: hasOverview },
+          { id: 'distribution', label: 'Distribuição inteligente', available: hasDistribution }
+        ];
+        tabs.forEach(function (tab) {
+          var button = document.createElement('button');
+          button.type = 'button';
+          var isActive = state.analysisTab === tab.id;
+          button.className = 'px-4 py-2 rounded-lg font-semibold transition-colors';
+          if (isActive) {
+            button.classList.add('bg-sky-600', 'text-white');
+          } else {
+            button.classList.add('text-slate-300', 'hover:text-white');
+          }
+          button.textContent = tab.label;
+          if (!tab.available) {
+            button.disabled = true;
+            button.classList.add('opacity-60', 'cursor-not-allowed');
+          } else {
+            button.addEventListener('click', function (ev) {
+              ev.preventDefault();
+              setAnalysisTab(tab.id);
+            });
+          }
+          tabsCard.appendChild(button);
+        });
+        return tabsCard;
+      }
+
+      function buildOverviewInfo(data) {
+        if (!data) return '';
         var infoParts = [];
         if (data.filters && data.filters.latestHour) {
           infoParts.push('Última hora descartada: ' + data.filters.latestHour);
@@ -837,13 +915,475 @@
             infoParts.push('Horas exibidas: ' + hoursLabels.join(', '));
           }
         }
-        document.getElementById('latest-info').textContent = infoParts.join(' • ');
-        if (siteRows) {
-          wrapper.appendChild(renderSiteCard(data.site));
+        return infoParts.join(' • ');
+      }
+
+      function buildDistributionInfo(distribution) {
+        if (!distribution) return '';
+        var infoParts = [];
+        if (distribution.latestHour) {
+          infoParts.push('Última hora descartada: ' + distribution.latestHour);
         }
-        if (urlRows) {
-          wrapper.appendChild(renderUrlCard(data.url, data.filters));
+        if (distribution.hours && distribution.hours.length) {
+          infoParts.push('Horas base: ' + distribution.hours.join(', '));
         }
+        return infoParts.join(' • ');
+      }
+
+      function renderDistributionView(distribution, wrapper) {
+        if (!distribution) {
+          var empty = document.createElement('div');
+          empty.className = 'card rounded-2xl p-6 text-center text-slate-400';
+          empty.textContent = 'Sem dados suficientes para sugerir distribuição inteligente.';
+          wrapper.appendChild(empty);
+          return;
+        }
+        resolveDistributionSelection(distribution);
+        wrapper.appendChild(renderDistributionControlsCard(distribution));
+        wrapper.appendChild(renderDistributionSitesCard(distribution));
+        wrapper.appendChild(renderDistributionUrlsCard(distribution));
+      }
+
+      function renderDistributionControlsCard(distribution) {
+        var card = document.createElement('div');
+        card.className = 'card rounded-2xl p-6 space-y-4';
+        var header = document.createElement('div');
+        header.className = 'flex items-center justify-between flex-wrap gap-3';
+        var title = document.createElement('h3');
+        title.className = 'text-lg font-semibold text-slate-100';
+        title.textContent = 'Controles globais da distribuição';
+        header.appendChild(title);
+        if (state.distribution.dirty) {
+          var badge = document.createElement('span');
+          badge.className = 'inline-flex items-center gap-1 text-xs font-semibold text-amber-300 bg-amber-500/10 border border-amber-400/40 px-3 py-1 rounded-full';
+          badge.innerHTML = '<svg class="w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 20 20"><path d="M10.75 2.75a.75.75 0 00-1.5 0v6.728l-3.614 3.613a.75.75 0 101.06 1.06l4-4A.75.75 0 0010.75 9.75V2.75z"/><path d="M4.25 13a.75.75 0 10-1.5 0v2.25A2.75 2.75 0 005.5 18h9a2.75 2.75 0 002.75-2.75V13a.75.75 0 10-1.5 0v2.25c0 .69-.56 1.25-1.25 1.25h-9c-.69 0-1.25-.56-1.25-1.25V13z"/></svg> Ajustes pendentes';
+          header.appendChild(badge);
+        }
+        card.appendChild(header);
+
+        var params = (state.distribution && state.distribution.params) || distribution.controls || {};
+        var fields = [
+          { key: 'totalSessions', label: 'Sessões alvo', type: 'number', step: 500, min: 1000, decimals: 0 },
+          { key: 'tau', label: 'Temperatura global (τ)', type: 'number', step: 1, min: 1, decimals: 0 },
+          { key: 'tauLocal', label: 'Temperatura local (τ local)', type: 'number', step: 1, min: 1, decimals: 0 },
+          { key: 'reliabilityK', label: 'K de confiabilidade', type: 'number', step: 10, min: 0, decimals: 0 },
+          { key: 'ucbZ', label: 'Fator UCB (z)', type: 'number', step: 1, min: 0, decimals: 0 },
+          { key: 'siteMinShare', label: 'Share mínimo por site (%)', percent: true, step: 0.5, min: 0, decimals: 1 },
+          { key: 'siteMaxShare', label: 'Share máximo por site (%)', percent: true, step: 0.5, min: 0, decimals: 1 },
+          { key: 'siteStep', label: 'Passo máximo site (%)', percent: true, step: 1, min: 0, decimals: 1 },
+          { key: 'urlSeedPercent', label: 'Seed mínimo URL (%)', percent: true, step: 0.5, min: 0, decimals: 1 },
+          { key: 'urlSeedSessions', label: 'Seed mínimo URL (sessões)', type: 'number', step: 10, min: 0, decimals: 0 },
+          { key: 'urlMaxShare', label: 'Teto por URL (%)', percent: true, step: 0.5, min: 0, decimals: 1 },
+          { key: 'urlStep', label: 'Passo máximo URL (%)', percent: true, step: 1, min: 0, decimals: 1 },
+          { key: 'modeThresholdRps', label: 'Limite RPS modo apostas ($)', type: 'number', step: 10, min: 0, decimals: 0 },
+          { key: 'modeThresholdCv', label: 'Limite CV modo apostas (%)', percent: true, step: 0.5, min: 0, decimals: 1 },
+          { key: 'controlReserve', label: 'Reserva controle (%)', percent: true, step: 0.5, min: 0, decimals: 1 }
+        ];
+
+        var grid = document.createElement('div');
+        grid.className = 'grid gap-4 md:grid-cols-2 xl:grid-cols-4';
+        fields.forEach(function (field) {
+          var wrapper = document.createElement('label');
+          wrapper.className = 'flex flex-col gap-1 text-sm text-slate-300';
+          wrapper.textContent = field.label;
+          var input = document.createElement('input');
+          input.type = field.type || 'number';
+          input.className = 'pill px-3 py-2 rounded-lg bg-slate-900/40 text-sm text-slate-100';
+          if (field.step != null) input.step = field.step;
+          if (field.min != null) input.min = field.min;
+          if (field.max != null) input.max = field.max;
+          var value = params[field.key];
+          if (value != null && value !== '') {
+            var numeric = Number(value);
+            if (field.percent) {
+              numeric = numeric * 100;
+            }
+            var decimals = field.decimals != null ? field.decimals : 2;
+            input.value = numeric.toFixed(decimals);
+          }
+          input.addEventListener('change', function (ev) {
+            var raw = parseFloat(ev.target.value);
+            if (isNaN(raw)) return;
+            var normalized = field.percent ? raw / 100 : raw;
+            updateDistributionParam(field.key, normalized);
+            renderAnalysis();
+          });
+          wrapper.appendChild(input);
+          grid.appendChild(wrapper);
+        });
+        card.appendChild(grid);
+
+        var quickActions = document.createElement('div');
+        quickActions.className = 'flex flex-wrap items-center justify-between gap-3';
+        var actionsLeft = document.createElement('div');
+        actionsLeft.className = 'flex flex-wrap gap-2';
+        var actionButtons = [
+          { label: 'Seed 50', handler: function () { updateDistributionParam('urlSeedSessions', 50); } },
+          { label: 'Seed 100', handler: function () { updateDistributionParam('urlSeedSessions', 100); } },
+          { label: 'Seed 200', handler: function () { updateDistributionParam('urlSeedSessions', 200); } },
+          { label: 'Teto 35%', handler: function () { updateDistributionParam('urlMaxShare', 0.35); } },
+          { label: 'Teto 25%', handler: function () { updateDistributionParam('urlMaxShare', 0.25); } },
+          { label: 'Desligar apostas', handler: function () { updateDistributionParam('exploitPortion', 1); updateDistributionParam('explorePortion', 0); } }
+        ];
+        actionButtons.forEach(function (action) {
+          var btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'px-3 py-1.5 rounded-lg border border-slate-600/60 text-xs text-slate-200 hover:bg-slate-800/70 transition-colors';
+          btn.textContent = action.label;
+          btn.addEventListener('click', function (ev) {
+            ev.preventDefault();
+            action.handler();
+            renderAnalysis();
+          });
+          actionsLeft.appendChild(btn);
+        });
+        quickActions.appendChild(actionsLeft);
+
+        var applyButton = document.createElement('button');
+        applyButton.type = 'button';
+        applyButton.id = 'btn-distribuicao-aplicar';
+        applyButton.className = 'inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-5 py-2.5 rounded-xl shadow-lg shadow-emerald-900/40 transition-all';
+        applyButton.innerHTML = '<svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>Recalcular plano';
+        applyButton.addEventListener('click', function (ev) {
+          ev.preventDefault();
+          recalcularDistribuicao();
+        });
+        quickActions.appendChild(applyButton);
+        card.appendChild(quickActions);
+
+        var summary = document.createElement('p');
+        summary.className = 'text-xs text-slate-400';
+        summary.textContent = 'Plano atual considera ' + formatNumber(distribution.totalSessions || params.totalSessions || 0) + ' sessões alvo.';
+        card.appendChild(summary);
+
+        return card;
+      }
+
+      function renderDistributionSitesCard(distribution) {
+        var card = document.createElement('div');
+        card.className = 'card rounded-2xl p-6 space-y-4';
+        var header = document.createElement('div');
+        header.className = 'flex items-center justify-between gap-3 flex-wrap';
+        var title = document.createElement('h3');
+        title.className = 'text-lg font-semibold text-slate-100';
+        title.textContent = 'Sugestão por Site';
+        header.appendChild(title);
+        card.appendChild(header);
+        var rows = distribution && distribution.sites ? distribution.sites : [];
+        if (!rows.length) {
+          var empty = document.createElement('div');
+          empty.className = 'text-sm text-slate-400';
+          empty.textContent = 'Sem sites suficientes para sugerir distribuição.';
+          card.appendChild(empty);
+          return card;
+        }
+        var sortedRows = sortDistributionSiteRows(rows);
+        var tableWrap = document.createElement('div');
+        tableWrap.className = 'overflow-auto';
+        var html = '';
+        html += '<table class="w-full text-sm min-w-max">';
+        html += '<thead class="text-slate-300">';
+        html += '<tr>' +
+          '<th class="px-3 py-2 text-left font-semibold">' + buildSortHeader('distributionSites', 'site', 'Site', 'left') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionSites', 'rps', 'RPS ($)', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionSites', 'coverage', 'Cobertura (%)', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionSites', 'rpsEff', 'RPS Efetivo ($)', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionSites', 'momentum', 'Tendência (1h)', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionSites', 'confidence', 'Confiab.', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionSites', 'currentShare', '% Atual', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionSites', 'suggestedShare', '% Sugerida', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionSites', 'deltaShare', 'Δ%', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-center font-semibold">' + buildSortHeader('distributionSites', 'mode', 'Modo', 'center') + '</th>' +
+          '<th class="px-3 py-2 text-left font-semibold">' + buildSortHeader('distributionSites', 'nextEvaluation', 'Próx. Reavaliação', 'left') + '</th>' +
+          '</tr>';
+        html += '</thead><tbody class="divide-y divide-slate-800/60">';
+        sortedRows.forEach(function (row) {
+          var selected = state.distribution.selectedSite === row.site;
+          var rowClass = selected ? 'bg-sky-900/30 text-slate-100' : '';
+          html += '<tr class="cursor-pointer ' + rowClass + '" data-site-select="' + escapeHtml(row.site) + '">';
+          html += '<td class="px-3 py-2 font-semibold text-slate-100">' + escapeHtml(row.site) + '</td>';
+          html += '<td class="px-3 py-2 text-right">' + formatCurrency(row.rps) + '</td>';
+          html += '<td class="px-3 py-2 text-right">' + formatPercent(row.coverage) + '</td>';
+          html += '<td class="px-3 py-2 text-right">' + formatCurrency(row.rpsEff) + '</td>';
+          html += '<td class="px-3 py-2 text-right">' + formatTrend(row.momentum) + '</td>';
+          html += '<td class="px-3 py-2 text-right">' + formatPercent(row.confidence * 100) + '</td>';
+          html += '<td class="px-3 py-2 text-right">' + formatShare(row.currentShare) + '</td>';
+          html += '<td class="px-3 py-2 text-right">' + formatShare(row.suggestedShare) + '</td>';
+          html += '<td class="px-3 py-2 text-right">' + formatDeltaShare(row.deltaShare) + '</td>';
+          html += '<td class="px-3 py-2 text-center"><span class="px-2 py-1 rounded-full text-xs ' + (row.mode === 'Apostas' ? 'bg-amber-500/10 text-amber-200 border border-amber-400/40' : 'bg-sky-500/10 text-sky-200 border border-sky-400/30') + '">' + escapeHtml(row.mode) + '</span></td>';
+          html += '<td class="px-3 py-2 text-left text-slate-300">' + escapeHtml(row.nextEvaluation || '-') + '</td>';
+          html += '</tr>';
+        });
+        html += '</tbody></table>';
+        tableWrap.innerHTML = html;
+        card.appendChild(tableWrap);
+        attachSortHandlers(card);
+        tableWrap.addEventListener('click', function (ev) {
+          var target = ev.target.closest('[data-site-select]');
+          if (!target) return;
+          var site = target.getAttribute('data-site-select');
+          if (!site) return;
+          state.distribution.selectedSite = site;
+          renderAnalysis();
+        });
+        return card;
+      }
+
+      function renderDistributionUrlsCard(distribution) {
+        var card = document.createElement('div');
+        card.className = 'card rounded-2xl p-6 space-y-4';
+        var header = document.createElement('div');
+        header.className = 'flex items-center justify-between gap-3 flex-wrap';
+        var title = document.createElement('h3');
+        title.className = 'text-lg font-semibold text-slate-100';
+        title.textContent = 'Sugestão por URL';
+        header.appendChild(title);
+        card.appendChild(header);
+        var selectedSite = state.distribution.selectedSite;
+        if (!selectedSite) {
+          var emptySelection = document.createElement('div');
+          emptySelection.className = 'text-sm text-slate-400';
+          emptySelection.textContent = 'Selecione um site para visualizar a distribuição entre URLs.';
+          card.appendChild(emptySelection);
+          return card;
+        }
+        var siteRows = distribution && distribution.urlsBySite ? distribution.urlsBySite[selectedSite] || [] : [];
+        if (!siteRows.length) {
+          var emptyRows = document.createElement('div');
+          emptyRows.className = 'text-sm text-slate-400';
+          emptyRows.textContent = 'Sem URLs suficientes para o site selecionado.';
+          card.appendChild(emptyRows);
+          return card;
+        }
+        var searchWrapper = document.createElement('div');
+        searchWrapper.className = 'flex items-center justify-between gap-3 flex-wrap';
+        var searchLabel = document.createElement('label');
+        searchLabel.className = 'text-xs uppercase tracking-wide text-slate-400';
+        searchLabel.setAttribute('for', 'distribution-url-busca');
+        searchLabel.textContent = 'Filtrar';
+        var searchInput = document.createElement('input');
+        searchInput.id = 'distribution-url-busca';
+        searchInput.type = 'search';
+        searchInput.className = 'pill px-3 py-2 rounded-lg bg-slate-900/40 text-sm text-slate-100 w-full md:w-80';
+        searchInput.placeholder = 'Buscar por URL';
+        searchInput.value = state.distribution.urlSearch || '';
+        searchInput.addEventListener('input', function (ev) {
+          state.distribution.urlSearch = ev.target.value;
+          renderAnalysis();
+        });
+        searchWrapper.appendChild(searchLabel);
+        searchWrapper.appendChild(searchInput);
+        card.appendChild(searchWrapper);
+
+        var filteredRows = siteRows;
+        var filterValue = (state.distribution.urlSearch || '').trim().toLowerCase();
+        if (filterValue) {
+          filteredRows = siteRows.filter(function (row) {
+            return String(row.url || '').toLowerCase().indexOf(filterValue) !== -1;
+          });
+        }
+        if (!filteredRows.length) {
+          var emptyFilter = document.createElement('div');
+          emptyFilter.className = 'text-sm text-slate-400';
+          emptyFilter.textContent = 'Nenhuma URL encontrada para o filtro informado.';
+          card.appendChild(emptyFilter);
+          return card;
+        }
+        var sortedUrls = sortDistributionUrlRows(filteredRows);
+        var tableWrap = document.createElement('div');
+        tableWrap.className = 'overflow-auto scroll-list-15';
+        var html = '';
+        html += '<table class="w-full text-sm min-w-max">';
+        html += '<thead class="text-slate-300">';
+        html += '<tr>' +
+          '<th class="px-3 py-2 text-left font-semibold">' + buildSortHeader('distributionUrls', 'url', 'URL', 'left') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionUrls', 'sessions', 'Sessões (3h)', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionUrls', 'rps', 'RPS ($)', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionUrls', 'coverage', 'Cobertura (%)', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionUrls', 'rpsEff', 'RPS Efetivo ($)', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionUrls', 'momentum', 'Momentum', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionUrls', 'score', 'Score', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionUrls', 'currentShare', '% Atual', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionUrls', 'suggestedShare', '% Sugerida', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionUrls', 'deltaShare', 'Δ%', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-center font-semibold">' + buildSortHeader('distributionUrls', 'status', 'Status', 'center') + '</th>' +
+          '<th class="px-3 py-2 text-left font-semibold">' + buildSortHeader('distributionUrls', 'nextEval', 'Próx. avaliação', 'left') + '</th>' +
+          '</tr>';
+        html += '</thead><tbody class="divide-y divide-slate-800/60">';
+        sortedUrls.forEach(function (row) {
+          var statusLower = String(row.status || '').toLowerCase();
+          var statusClass = statusLower === 'alerta' ? 'bg-rose-500/10 text-rose-200 border border-rose-400/40' : statusLower === 'seed' ? 'bg-sky-500/10 text-sky-200 border border-sky-400/30' : 'bg-emerald-500/10 text-emerald-200 border border-emerald-400/30';
+          html += '<tr>' +
+            '<td class="px-3 py-2 text-sky-300 break-all">' + escapeHtml(row.url || '') + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatNumber(row.sessions) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatCurrency(row.rps) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatPercent(row.coverage) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatCurrency(row.rpsEff) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatTrend(row.momentum) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatCurrency(row.score) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatShare(row.currentShare) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatShare(row.suggestedShare) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatDeltaShare(row.deltaShare) + '</td>' +
+            '<td class="px-3 py-2 text-center"><span class="px-2 py-1 rounded-full text-xs ' + statusClass + '">' + escapeHtml(row.status || 'ok') + '</span></td>' +
+            '<td class="px-3 py-2 text-left text-slate-300">' + escapeHtml(row.nextEval || '-') + '</td>' +
+            '</tr>';
+        });
+        html += '</tbody></table>';
+        tableWrap.innerHTML = html;
+        card.appendChild(tableWrap);
+        attachSortHandlers(card);
+        return card;
+      }
+
+      function resolveDistributionSelection(distribution) {
+        if (!state.distribution) return;
+        var sites = distribution && distribution.sites ? distribution.sites : [];
+        if (!sites.length) {
+          state.distribution.selectedSite = '';
+          return;
+        }
+        var selected = state.distribution.selectedSite;
+        var exists = selected && sites.some(function (row) { return row.site === selected; });
+        if (!exists) {
+          state.distribution.selectedSite = distribution.selectedSite || sites[0].site;
+        }
+      }
+
+      function sortDistributionSiteRows(rows) {
+        var sortState = getSortState('distributionSites');
+        if (!sortState) return rows.slice();
+        var multiplier = sortState.direction === 'asc' ? 1 : -1;
+        var key = sortState.key;
+        return rows.slice().sort(function (a, b) {
+          var av = getDistributionSiteSortValue(a, key);
+          var bv = getDistributionSiteSortValue(b, key);
+          if (typeof av === 'string' || typeof bv === 'string') {
+            return String(av).localeCompare(String(bv)) * multiplier;
+          }
+          return (av - bv) * multiplier;
+        });
+      }
+
+      function getDistributionSiteSortValue(row, key) {
+        if (key === 'site') return (row.site || '').toLowerCase();
+        if (key === 'rps') return Number(row.rps || 0);
+        if (key === 'coverage') return Number(row.coverage || 0);
+        if (key === 'rpsEff') return Number(row.rpsEff || 0);
+        if (key === 'momentum') return Number(row.momentum || 0);
+        if (key === 'confidence') return Number(row.confidence || 0);
+        if (key === 'currentShare') return Number(row.currentShare || 0);
+        if (key === 'suggestedShare') return Number(row.suggestedShare || 0);
+        if (key === 'deltaShare') return Number(row.deltaShare || 0);
+        if (key === 'mode') return (row.mode || '').toLowerCase();
+        if (key === 'nextEvaluation') return (row.nextEvaluation || '').toLowerCase();
+        return 0;
+      }
+
+      function sortDistributionUrlRows(rows) {
+        var sortState = getSortState('distributionUrls');
+        if (!sortState) return rows.slice();
+        var multiplier = sortState.direction === 'asc' ? 1 : -1;
+        var key = sortState.key;
+        return rows.slice().sort(function (a, b) {
+          var av = getDistributionUrlSortValue(a, key);
+          var bv = getDistributionUrlSortValue(b, key);
+          if (typeof av === 'string' || typeof bv === 'string') {
+            return String(av).localeCompare(String(bv)) * multiplier;
+          }
+          return (av - bv) * multiplier;
+        });
+      }
+
+      function getDistributionUrlSortValue(row, key) {
+        if (key === 'url') return (row.url || '').toLowerCase();
+        if (key === 'sessions') return Number(row.sessions || 0);
+        if (key === 'rps') return Number(row.rps || 0);
+        if (key === 'coverage') return Number(row.coverage || 0);
+        if (key === 'rpsEff') return Number(row.rpsEff || 0);
+        if (key === 'momentum') return Number(row.momentum || 0);
+        if (key === 'score') return Number(row.score || 0);
+        if (key === 'currentShare') return Number(row.currentShare || 0);
+        if (key === 'suggestedShare') return Number(row.suggestedShare || 0);
+        if (key === 'deltaShare') return Number(row.deltaShare || 0);
+        if (key === 'status') return (row.status || '').toLowerCase();
+        if (key === 'nextEval') return (row.nextEval || '').toLowerCase();
+        return 0;
+      }
+
+      function updateDistributionParam(key, value) {
+        if (!state.distribution) {
+          state.distribution = { params: {}, selectedSite: '', urlSearch: '', dirty: false };
+        }
+        if (!state.distribution.params) {
+          state.distribution.params = {};
+        }
+        var current = state.distribution.params[key];
+        if (current === value) return;
+        state.distribution.params[key] = value;
+        state.distribution.dirty = true;
+      }
+
+      function getDistributionPayload() {
+        if (!state.distribution || !state.distribution.params) return null;
+        var payload = {};
+        Object.keys(state.distribution.params).forEach(function (key) {
+          var value = state.distribution.params[key];
+          if (value != null && value !== '') {
+            payload[key] = Number(value);
+          }
+        });
+        return payload;
+      }
+
+      function syncDistributionState(distribution, force) {
+        if (!state.distribution) {
+          state.distribution = { params: null, selectedSite: '', urlSearch: '', dirty: false };
+        }
+        if (distribution && distribution.controls && (force || !state.distribution.dirty)) {
+          state.distribution.params = Object.assign({}, distribution.controls);
+          state.distribution.dirty = false;
+        } else if (!state.distribution.params) {
+          state.distribution.params = {};
+        }
+        if (distribution && distribution.sites && distribution.sites.length) {
+          var selected = state.distribution.selectedSite;
+          var exists = selected && distribution.sites.some(function (row) { return row.site === selected; });
+          if (!exists) {
+            state.distribution.selectedSite = distribution.selectedSite || distribution.sites[0].site;
+          }
+        } else {
+          state.distribution.selectedSite = '';
+        }
+      }
+
+      function setAnalysisTab(tab) {
+        if (state.analysisTab === tab) return;
+        state.analysisTab = tab;
+        renderAnalysis();
+      }
+
+      function recalcularDistribuicao() {
+        if (!state.filters.operation || !state.filters.traffic) {
+          showToast('Aplique os filtros principais antes de recalcular a distribuição.', 'error');
+          return;
+        }
+        showLoading(true);
+        google.script.run
+          .withSuccessHandler(function (data) {
+            showLoading(false);
+            state.analysis = data;
+            syncDistributionState(data && data.distribution, true);
+            renderAnalysis();
+          })
+          .withFailureHandler(handleError)
+          .getDashboardData({
+            operation: state.filters.operation,
+            traffic: state.filters.traffic,
+            startDate: state.filters.startDate,
+            endDate: state.filters.endDate,
+            urlWindow: state.filters.window,
+            distribution: getDistributionPayload()
+          });
       }
 
       function getSortState(section) {
@@ -1170,6 +1710,31 @@
       function formatPercent(value) {
         var number = Number(value || 0);
         return number.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' %';
+      }
+
+      function formatShare(value) {
+        var number = Number(value || 0) * 100;
+        return number.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' %';
+      }
+
+      function formatDeltaShare(value) {
+        var number = Number(value || 0) * 100;
+        if (Math.abs(number) < 0.005) {
+          return '0,00 %';
+        }
+        var sign = number > 0 ? '+' : '-';
+        var formatted = Math.abs(number).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' %';
+        return sign + formatted;
+      }
+
+      function formatTrend(value) {
+        var number = Number(value || 0) * 100;
+        if (Math.abs(number) < 0.05) {
+          return '0,0 %';
+        }
+        var sign = number > 0 ? '+' : '-';
+        var formatted = Math.abs(number).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' %';
+        return sign + formatted;
       }
 
       function formatInputNumber(value) {
