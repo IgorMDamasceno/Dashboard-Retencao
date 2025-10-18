@@ -1114,7 +1114,8 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
     Array.prototype.push.apply(globalAggregates, siteUrlRows);
   });
 
-  var targetRecipients = Math.max(0, Math.round(controls.urlTargetRecipients || 0));
+  var requestedRecipients = Math.max(0, Math.round(controls.urlTargetRecipients || 0));
+  var targetRecipients = requestedRecipients;
   var limitApplied = false;
   if (!controls.urlRequireAll && targetRecipients > 0 && globalAggregates.length > targetRecipients) {
     limitApplied = true;
@@ -1130,6 +1131,9 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
       return (b.score || 0) - (a.score || 0);
     });
     var selectedCount = Object.keys(selectedKeys).length;
+    if (targetRecipients > 0 && selectedCount > targetRecipients) {
+      targetRecipients = selectedCount;
+    }
     for (var s = 0; s < sortedForSelection.length && selectedCount < targetRecipients; s++) {
       var candidate = sortedForSelection[s];
       if (!selectedKeys[candidate.key]) {
@@ -1145,8 +1149,9 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
         var bestRow = siteRowsList.slice().sort(function (a, b) {
           return (b.suggestedGlobalShare || 0) - (a.suggestedGlobalShare || 0);
         })[0];
-        if (bestRow) {
+        if (bestRow && selectedCount < targetRecipients) {
           selectedKeys[bestRow.key] = true;
+          selectedCount++;
         }
       }
     });
@@ -1243,7 +1248,7 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
     averageShare: averageGlobalShare,
     activeCount: activeCount,
     totalCount: totalCount,
-    targetRecipients: targetRecipients,
+    targetRecipients: requestedRecipients,
     limitApplied: limitApplied
   };
 
