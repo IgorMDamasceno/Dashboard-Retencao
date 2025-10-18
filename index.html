@@ -978,6 +978,7 @@
           { key: 'urlSeedPercent', label: 'Seed mínimo URL (%)', percent: true, step: 0.5, min: 0, decimals: 1 },
           { key: 'urlSeedSessions', label: 'Seed mínimo URL (sessões)', type: 'number', step: 10, min: 0, decimals: 0 },
           { key: 'urlMinRecipients', label: 'URLs prioritárias', type: 'number', step: 1, min: 0, decimals: 0 },
+          { key: 'urlTargetRecipients', label: 'URLs ativas (limite)', type: 'number', step: 1, min: 0, decimals: 0 },
           { key: 'urlMaxShare', label: 'Teto por URL (%)', percent: true, step: 0.5, min: 0, decimals: 1 },
           { key: 'urlStep', label: 'Passo máximo URL (%)', percent: true, step: 1, min: 0, decimals: 1 },
           { key: 'modeThresholdRps', label: 'Limite RPS modo apostas ($)', type: 'number', step: 10, min: 0, decimals: 0 },
@@ -1169,10 +1170,26 @@
         title.className = 'text-lg font-semibold text-slate-100';
         title.textContent = 'Resumo global por URL';
         header.appendChild(title);
+        var infoWrap = document.createElement('div');
+        infoWrap.className = 'flex flex-wrap items-center gap-3 text-sm text-slate-300';
         var average = document.createElement('span');
-        average.className = 'text-sm text-slate-300';
         average.textContent = 'Média de share: ' + formatShare(summary.averageShare || 0);
-        header.appendChild(average);
+        infoWrap.appendChild(average);
+        var active = document.createElement('span');
+        var activeCount = summary.activeCount || 0;
+        if (summary.targetRecipients) {
+          active.textContent = 'URLs ativas: ' + activeCount + ' / ' + summary.targetRecipients;
+        } else {
+          active.textContent = 'URLs ativas: ' + activeCount;
+        }
+        infoWrap.appendChild(active);
+        if (summary.limitApplied) {
+          var limitBadge = document.createElement('span');
+          limitBadge.className = 'inline-flex items-center gap-1 px-2 py-1 rounded-full bg-amber-500/10 text-amber-200 border border-amber-400/40 text-xs';
+          limitBadge.innerHTML = '<svg class="w-3 h-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"/></svg>Limite ativo';
+          infoWrap.appendChild(limitBadge);
+        }
+        header.appendChild(infoWrap);
         card.appendChild(header);
 
         var buckets = document.createElement('div');
@@ -1228,6 +1245,9 @@
               '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-slate-900/70 border border-slate-700/60">Δ ' + formatDeltaShare(row.deltaGlobalShare || 0) + '</span>';
             if (row.guaranteed) {
               meta.innerHTML += '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-indigo-500/15 text-indigo-200 border border-indigo-400/40">Garantido</span>';
+            }
+            if (row.limited) {
+              meta.innerHTML += '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-slate-500/10 text-slate-200 border border-slate-500/30">Sem tráfego</span>';
             }
             meta.innerHTML += '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-slate-900/70 border border-slate-700/60">' + escapeHtml(row.status || 'ok') + '</span>';
             item.appendChild(meta);
@@ -1338,6 +1358,7 @@
             '<td class="px-3 py-2 text-center"><div class="flex items-center justify-center gap-2 flex-wrap">' +
             '<span class="px-2 py-1 rounded-full text-xs ' + statusClass + '">' + escapeHtml(row.status || 'ok') + '</span>' +
             (row.guaranteed ? '<span class="px-2 py-1 rounded-full text-xs bg-indigo-500/15 text-indigo-200 border border-indigo-400/40">Garantido</span>' : '') +
+            (row.limited ? '<span class="px-2 py-1 rounded-full text-xs bg-slate-500/10 text-slate-200 border border-slate-500/30">Sem tráfego</span>' : '') +
             '</div></td>' +
             '<td class="px-3 py-2 text-left text-slate-300">' + escapeHtml(row.nextEval || '-') + '</td>' +
             '</tr>';

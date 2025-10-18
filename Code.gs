@@ -592,6 +592,7 @@ function getDefaultDistributionControls_() {
     urlSeedPercent: 0.02,
     urlSeedSessions: 50,
     urlMinRecipients: 3,
+    urlTargetRecipients: 0,
     urlRequireAll: 0,
     urlMaxShare: 0.4,
     urlStep: 0.35,
@@ -620,7 +621,7 @@ function buildDistributionControls_(params) {
       controls[key] = Math.max(1000, Math.round(parsed));
     } else if (key === 'tau' || key === 'tauLocal') {
       controls[key] = Math.max(1, parsed);
-    } else if (key === 'reliabilityK' || key === 'siteMinSessions' || key === 'urlSeedSessions' || key === 'urlMinRecipients') {
+    } else if (key === 'reliabilityK' || key === 'siteMinSessions' || key === 'urlSeedSessions' || key === 'urlMinRecipients' || key === 'urlTargetRecipients') {
       controls[key] = Math.max(0, Math.round(parsed));
     } else if (key === 'ucbZ') {
       controls[key] = Math.max(0, parsed);
@@ -1054,13 +1055,98 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
         currentGlobalShare: currentGlobalShare,
         suggestedGlobalShare: suggestedGlobalShare,
         deltaGlobalShare: deltaGlobalShare,
-        guaranteed: !!item.required
+        guaranteed: !!item.required,
+        limited: false
       };
     });
 
     urlsBySite[siteRow.site] = siteUrlRows;
     Array.prototype.push.apply(globalAggregates, siteUrlRows);
   });
+
+  var targetRecipients = Math.max(0, Math.round(controls.urlTargetRecipients || 0));
+  var limitApplied = false;
+  if (targetRecipients > 0 && globalAggregates.length > targetRecipients) {
+    limitApplied = true;
+    var selectedKeys = {};
+    globalAggregates.forEach(function (row) {
+      if (row.guaranteed) {
+        selectedKeys[row.key] = true;
+      }
+    });
+    var sortedForSelection = globalAggregates.slice().sort(function (a, b) {
+      var shareDiff = (b.suggestedGlobalShare || 0) - (a.suggestedGlobalShare || 0);
+      if (shareDiff !== 0) return shareDiff;
+      return (b.score || 0) - (a.score || 0);
+    });
+    var selectedCount = Object.keys(selectedKeys).length;
+    for (var s = 0; s < sortedForSelection.length && selectedCount < targetRecipients; s++) {
+      var candidate = sortedForSelection[s];
+      if (!selectedKeys[candidate.key]) {
+        selectedKeys[candidate.key] = true;
+        selectedCount++;
+      }
+    }
+    Object.keys(urlsBySite).forEach(function (siteKey) {
+      var siteRowsList = urlsBySite[siteKey] || [];
+      if (!siteRowsList.length) return;
+      var hasSelected = siteRowsList.some(function (row) { return selectedKeys[row.key]; });
+      if (!hasSelected) {
+        var bestRow = siteRowsList.slice().sort(function (a, b) {
+          return (b.suggestedGlobalShare || 0) - (a.suggestedGlobalShare || 0);
+        })[0];
+        if (bestRow) {
+          selectedKeys[bestRow.key] = true;
+        }
+      }
+    });
+
+    siteRows.forEach(function (siteRow) {
+      var siteKey = siteRow.site;
+      var siteUrlsList = urlsBySite[siteKey] || [];
+      if (!siteUrlsList.length) return;
+      var selectedRows = [];
+      var sumSelected = 0;
+      siteUrlsList.forEach(function (row) {
+        if (selectedKeys[row.key]) {
+          selectedRows.push(row);
+          sumSelected += row.suggestedShare;
+        }
+      });
+      if (sumSelected <= 0 && selectedRows.length) {
+        var equalShare = 1 / selectedRows.length;
+        selectedRows.forEach(function (row) {
+          row.suggestedShare = equalShare;
+        });
+        sumSelected = 1;
+      }
+      if (sumSelected <= 0) {
+        return;
+      }
+      var siteSuggestedShare = siteRow.suggestedShare || 0;
+      var siteSuggestedSessions = siteRow.suggestedSessions || 0;
+      siteUrlsList.forEach(function (row) {
+        if (!selectedKeys[row.key]) {
+          row.limited = true;
+          row.suggestedShare = 0;
+          row.suggestedSessions = 0;
+          row.suggestedGlobalShare = 0;
+          row.deltaShare = 0 - row.currentShare;
+          row.deltaGlobalShare = 0 - row.currentGlobalShare;
+        } else {
+          var normalizedShare = row.suggestedShare / sumSelected;
+          row.limited = false;
+          row.suggestedShare = normalizedShare;
+          row.suggestedSessions = normalizedShare * siteSuggestedSessions;
+          row.suggestedGlobalShare = normalizedShare * siteSuggestedShare;
+          var currentShare = row.currentShare || 0;
+          var currentGlobal = row.currentGlobalShare || 0;
+          row.deltaShare = normalizedShare - currentShare;
+          row.deltaGlobalShare = row.suggestedGlobalShare - currentGlobal;
+        }
+      });
+    });
+  }
 
   var siteOutput = siteBounds.map(function (item) {
     var row = siteRows.find(function (siteRow) { return siteRow.site === item.key; });
@@ -1092,12 +1178,20 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
   var sortedGlobal = globalAggregates.slice().sort(function (a, b) {
     return (b.suggestedGlobalShare || 0) - (a.suggestedGlobalShare || 0);
   });
-  var averageGlobalShare = sortedGlobal.length ? 1 / sortedGlobal.length : 0;
+  var activeCount = sortedGlobal.filter(function (row) { return (row.suggestedGlobalShare || 0) > 0; }).length;
+  var averageGlobalShare = activeCount ? 1 / activeCount : (sortedGlobal.length ? 1 / sortedGlobal.length : 0);
   var requiredTop = controls.urlRequireAll ? sortedGlobal.length : Math.min(sortedGlobal.length, Math.max(0, controls.urlMinRecipients));
+  if (targetRecipients > 0) {
+    requiredTop = Math.min(requiredTop, targetRecipients);
+  }
   var globalMore = [];
   var globalLess = [];
   sortedGlobal.forEach(function (row, index) {
-    var qualifies = index < requiredTop || (row.suggestedGlobalShare || 0) >= averageGlobalShare || row.guaranteed;
+    var share = row.suggestedGlobalShare || 0;
+    var qualifies = index < requiredTop || share >= averageGlobalShare || row.guaranteed;
+    if (share <= 0 && !row.guaranteed) {
+      qualifies = false;
+    }
     if (qualifies) {
       globalMore.push(row);
     } else {
@@ -1118,7 +1212,10 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
     more: globalMore,
     less: globalLess,
     all: sortedGlobal,
-    averageShare: averageGlobalShare
+    averageShare: averageGlobalShare,
+    activeCount: activeCount,
+    targetRecipients: targetRecipients,
+    limitApplied: limitApplied
   };
 
   return {
