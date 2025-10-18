@@ -1,0 +1,66 @@
+Quero fazer uma dashboard para analisar alguns dados. Essa dashboard ela será feita para Rodar no AppScript com um arquivo .gs para a lógica e .html para o frontend
+
+Para a Base de Dados será usado a própria Planilha, que terá dados na aba “BD – GAM”. Nessa aba teremos as seguintes métricas:
+•	Data
+•	Hora
+•	Site
+•	Canal
+•	URL
+•	Bloco
+•	Solicitações
+•	Receita (USD)
+•	Cobertura (%)
+•	eCPM
+
+Nessa Dashboard teremos que ter duas abas, uma para Análise e outra para Configuração
+
+Na aba de configuração teremos Três  tipos de configurações. O primeiro será um cadastro de URL e a operação, no qual eu vou cadastrar a URL e a operação. Então cada URL será ligada a uma operação específica
+
+A segunda configuração a ser feita nessa aba é a de “Tráfego”, que nesse caso teremos 3 opções disponíveis, que serão as seguintes:
+- Automação
+- Broadcast
+- Push
+Junto a configuração de Tráfego eu devo selecionar a utm_source, que pode ser uma ou mais de uma
+
+A terceira configuração será com base nos sites que eu tenho cadastrados nas URLs. Porque eu sei que se eu tenho uma URL “en.genialcredito.com/amazon-visa-card-how-it-works-starting-limit-and-real-world-perks” eu sei que o site é o  “en.genialcredito.com”. Portanto, eu consigo saber todos os sites que eu tenho. Nessa caso eu vou gerar uma tabela com uma coluna “Sites” e outra com o nome de “RevShare”. A Coluna de Sites deverá ser preenchida automaticamente e a Coluna de RevShare será preenchida manualmente e conterá valores entre 0 e 100%. Além disso, esses valores RevShare deverão ser aplicados em qualquer cálculo ou métrica de receita da Dashboard. Portanto, se eu tenho uma receita de $100 no Site A e o RevShare desse site é de 5%, na verdade a receita dele nos cálculos será de $95
+
+Todas essas configurações elas podem ser salvas em abas da própria planilha
+
+Portanto, na hora de Analisar, eu vou escolher a operação que me dará a informação de quais URLs eu tenho que analisar e a escolha de tráfego, que me dirá de quais utm_sources eu tenho analisar essas URLs
+
+A aba de Análise, terá dois filtros obrigatório que serão os  de Operação e Tráfego e um de Período (que escolherei a data final inicial e final), porém, o filtro de data é opcional e se caso não for preenchido considerar sempre o dia atual apenas
+
+A aba de análise ela será divida em duas partes. A primeira análise seria a por site e a segunda a por URL.
+
+A análise por site terá as seguintes métricas:
+- Sessões
+- Receita
+- RPS
+
+A receita vai vir do número de solicitações dos blocos que contenham a palavra interstitial no nome daquele site
+A receita vai vir da soma de receita daquele site
+O RPS será calculado pela seguinte fórmula: RPS = Receita / Sessões * 1000
+
+Só que essas métrias serão calculadas para as últimas 4 horas, descartando a última hora de dados. Portanto, se o último dado é da hora 20h, as últimas 4 horas, são 20h, 19h, 18h e 17h, então devo desconsiderar o horários das 20h e vou calcular essas métricas para o horários das 17h, 18h e 19h. Além disso, devo calcular essas métricas para o dia total
+Essses dados eu posso organizar eles da seguinte maneira:
+
+O Cabeçalho poderá duas linhas
+Ficando assim a primeira linha:
+Site | Sessões | Receita ($) | RPS ($)
+
+A segunda linha ficaria assim:
+Abaixo de Site, pode ser uma linha dupla, que pegue a palavra site também, meio que uma mesclagem com a linha de cima
+Abaixo de Sessões , Receita ($) e RPS ($), ficará divido em quatro colunas cada uma, sendo uma para cada horário e outra para o total . No caso do exemplo acima, ficaria assim:
+17h | 18h | 19h | Total
+
+E depois como uma última linha, ter uma linha de total, que vai calcular o RPS médio para cada site
+
+A segunda parte da análise será quebrado por URL:
+Nesse caso teremos um cálculo de RPS normal, sendo apenas um. O RPS poderá ser do dia inteiro, das últimas 6 horas ou das últimas 3 horas, sempre descartando a última hora de dados disponíveis. A opção de ser do dia inteiro, das últimas 6 ou 3 horas será com base em um filtro terá que no começo da Análise por URL
+
+Além disso para a análise de RPS por URL, teremos novas colunas, além das Colunas de URL , Sessões, Receita ($) e RPS ($), que serão as de eCPM ($), Cobertura (%) e eCPM Efetivo ($). 
+
+- eCPM ($) e Cobertura (%) poderá ser coletado direto do banco de dados e como serão agrupados com outros horários, poderá usar média ponderada usando as solicitações dos blocos interstitial como peso.
+- O eCPM Efetivo ($)  será calculado através da fórmula: eCPM efetivo ($) = eCPM * Cobertura
+
+Na pasta de Exemplo, terá um exemplo de Dahboard que eu já fiz, pode copiar layout, paleta de cores e outras funcionalidades, pois são bem parecidas dela. 
