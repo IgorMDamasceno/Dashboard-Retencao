@@ -675,6 +675,7 @@ function buildDistributionControls_(params) {
 
 function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
   var controls = buildDistributionControls_(params);
+  var globalLimitEnabled = !controls.urlRequireAll && Math.max(0, Math.round(controls.urlTargetRecipients || 0)) > 0;
   var windowHours = hoursInfo && hoursInfo.windowHours ? hoursInfo.windowHours : [];
   var hourKeys = windowHours.map(function (hour) { return hour.key; });
   if (!rows || !rows.length || !hourKeys.length) {
@@ -1013,9 +1014,11 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
     }
 
     var requiredKeys = {};
-    var requiredCount = controls.urlRequireAll ? siteUrls.length : Math.min(siteUrls.length, Math.max(0, controls.urlMinRecipients));
+    var requiredCount = 0;
     if (controls.urlRequireAll && siteUrls.length) {
       requiredCount = siteUrls.length;
+    } else if (!globalLimitEnabled) {
+      requiredCount = Math.min(siteUrls.length, Math.max(0, controls.urlMinRecipients));
     }
     if (requiredCount > 0 && siteUrls.length) {
       var priority = siteUrls.slice().sort(function (a, b) {
@@ -1168,15 +1171,26 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
           sumSelected += row.suggestedShare;
         }
       });
+      if (!selectedRows.length) {
+        siteUrlsList.forEach(function (row) {
+          row.limited = true;
+          row.suggestedShare = 0;
+          row.suggestedSessions = 0;
+          row.suggestedGlobalShare = 0;
+          row.deltaShare = 0 - (row.currentShare || 0);
+          row.deltaGlobalShare = 0 - (row.currentGlobalShare || 0);
+        });
+        siteRow.suggestedShare = 0;
+        siteRow.suggestedSessions = 0;
+        siteRow.deltaShare = 0 - (siteRow.currentShare || 0);
+        return;
+      }
       if (sumSelected <= 0 && selectedRows.length) {
         var equalShare = 1 / selectedRows.length;
         selectedRows.forEach(function (row) {
           row.suggestedShare = equalShare;
         });
         sumSelected = 1;
-      }
-      if (sumSelected <= 0) {
-        return;
       }
       var siteSuggestedShare = siteRow.suggestedShare || 0;
       var siteSuggestedSessions = siteRow.suggestedSessions || 0;
@@ -1199,6 +1213,36 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
           row.deltaShare = normalizedShare - currentShare;
           row.deltaGlobalShare = row.suggestedGlobalShare - currentGlobal;
         }
+      });
+    });
+  }
+
+  var activeSiteShare = 0;
+  siteRows.forEach(function (siteRow) {
+    activeSiteShare += siteRow.suggestedShare || 0;
+  });
+  if (activeSiteShare > 0 && Math.abs(activeSiteShare - 1) > 1e-6) {
+    var siteScale = 1 / activeSiteShare;
+    siteRows.forEach(function (siteRow) {
+      var originalSuggested = siteRow.suggestedShare || 0;
+      if (originalSuggested <= 0) {
+        siteRow.suggestedShare = 0;
+        siteRow.suggestedSessions = 0;
+        siteRow.deltaShare = 0 - (siteRow.currentShare || 0);
+        return;
+      }
+      var scaledShare = clamp_(originalSuggested * siteScale, 0, 1);
+      siteRow.suggestedShare = scaledShare;
+      siteRow.suggestedSessions = scaledShare * controls.totalSessions;
+      siteRow.deltaShare = scaledShare - (siteRow.currentShare || 0);
+      var siteUrlsList = urlsBySite[siteRow.site] || [];
+      siteUrlsList.forEach(function (row) {
+        var normalizedShare = row.suggestedShare || 0;
+        var newSuggestedSessions = normalizedShare * siteRow.suggestedSessions;
+        var newGlobalShare = normalizedShare * siteRow.suggestedShare;
+        row.suggestedSessions = newSuggestedSessions;
+        row.deltaGlobalShare = newGlobalShare - (row.currentGlobalShare || 0);
+        row.suggestedGlobalShare = newGlobalShare;
       });
     });
   }
