@@ -1,0 +1,887 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <title>Dashboard de Retenção</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    body {
+      font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, 'Helvetica Neue', Arial;
+      background-color: #0f172a;
+      background-image: radial-gradient(circle at 1px 1px, #1e293b 1px, transparent 0);
+      background-size: 2rem 2rem;
+    }
+    .card {
+      background: rgba(15, 23, 42, 0.65);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(51, 65, 85, 0.6);
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    }
+    .pill {
+      background: rgba(30, 41, 59, 0.7);
+      border: 1px solid rgba(71, 85, 105, 0.6);
+      transition: all 0.2s ease-in-out;
+    }
+    .pill:hover {
+      background: rgba(51, 65, 85, 0.8);
+      border-color: rgba(100, 116, 139, 0.7);
+    }
+    tbody tr:hover {
+      background-color: rgba(30, 41, 59, 0.45);
+    }
+    #toast-container {
+      position: fixed;
+      top: 1.25rem;
+      right: 1.25rem;
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+    .toast {
+      display: flex;
+      align-items: center;
+      padding: 1rem;
+      border-radius: 0.75rem;
+      color: #e2e8f0;
+      min-width: 280px;
+      max-width: 380px;
+      box-shadow: 0 10px 15px -3px rgba(0,0,0,.35), 0 4px 6px -4px rgba(0,0,0,.25);
+      animation: toast-in 0.4s ease-out both;
+    }
+    .toast-success { background-color: #0f766e; border: 1px solid #0d9488; }
+    .toast-error { background-color: #be123c; border: 1px solid #9f1239; }
+    .toast-info { background-color: #0369a1; border: 1px solid #0ea5e9; }
+    .toast.hide { animation: toast-out 0.4s ease-in forwards; }
+    @keyframes toast-in { from { opacity: 0; transform: translateX(40px); } to { opacity: 1; transform: translateX(0); } }
+    @keyframes toast-out { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(40px); } }
+  </style>
+</head>
+<body class="text-slate-200">
+  <div id="toast-container"></div>
+  <div class="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-8">
+    <header class="card rounded-2xl p-6">
+      <div class="flex flex-wrap items-center justify-between gap-4">
+        <div class="flex items-center gap-4">
+          <div class="bg-slate-900/70 p-3 rounded-xl border border-slate-700/60">
+            <svg class="w-9 h-9 text-sky-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3 5.25C3 4.007 4.007 3 5.25 3h13.5C20.493 3 21.5 4.007 21.5 5.25v13.5A2.25 2.25 0 0119.25 21H5.25A2.25 2.25 0 013 18.75V5.25z" />
+              <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 7.5h9M7.5 12h9m-9 4.5h5.25" />
+            </svg>
+          </div>
+          <div>
+            <h1 class="text-2xl sm:text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-teal-300">Dashboard de Retenção</h1>
+            <p class="text-slate-400 mt-1">Acompanhe a performance por <span class="text-slate-200 font-semibold">Site</span> e <span class="text-slate-200 font-semibold">URL</span>, descartando sempre a última hora de dados.</p>
+          </div>
+        </div>
+        <div class="inline-flex rounded-xl pill p-1">
+          <button id="tab-analise" class="px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold flex items-center gap-2">
+            <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75l2.25 2.25 3.75-4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+            Análise
+          </button>
+          <button id="tab-config" class="px-4 py-2 rounded-lg text-slate-300 hover:text-white flex items-center gap-2">
+            <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v18m9-9H3" /></svg>
+            Configuração
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <section id="view-analise" class="space-y-8">
+      <div class="card rounded-2xl p-6 space-y-6">
+        <div class="flex items-center justify-between flex-wrap gap-3">
+          <h2 class="text-lg font-semibold text-slate-100 flex items-center gap-2">
+            <svg class="w-6 h-6 text-sky-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 5.25h16.5M4.5 9h15M3.75 12.75h16.5M4.5 16.5h15" /></svg>
+            Filtros
+          </h2>
+          <span id="latest-info" class="text-xs text-slate-400"></span>
+        </div>
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
+          <div class="lg:col-span-2">
+            <label class="block text-sm text-slate-400 mb-1">Operação <span class="text-red-400">*</span></label>
+            <select id="filter-operacao" class="w-full pill rounded-lg px-3 py-2 text-sm text-slate-100 bg-slate-900/40">
+              <option value="">— selecione —</option>
+            </select>
+          </div>
+          <div class="lg:col-span-2">
+            <label class="block text-sm text-slate-400 mb-1">Tráfego <span class="text-red-400">*</span></label>
+            <select id="filter-trafego" class="w-full pill rounded-lg px-3 py-2 text-sm text-slate-100 bg-slate-900/40">
+              <option value="">— selecione —</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm text-slate-400 mb-1">Data inicial</label>
+            <input id="filter-inicio" type="date" class="w-full pill rounded-lg px-3 py-2 text-sm bg-slate-900/40 text-slate-100" />
+          </div>
+          <div>
+            <label class="block text-sm text-slate-400 mb-1">Data final</label>
+            <input id="filter-fim" type="date" class="w-full pill rounded-lg px-3 py-2 text-sm bg-slate-900/40 text-slate-100" />
+          </div>
+          <div class="lg:col-span-2">
+            <label class="block text-sm text-slate-400 mb-1">Janela de RPS por URL</label>
+            <select id="filter-janela" class="w-full pill rounded-lg px-3 py-2 text-sm text-slate-100 bg-slate-900/40">
+              <option value="day">Dia inteiro (exceto última hora)</option>
+              <option value="last6h">Últimas 6 horas</option>
+              <option value="last3h">Últimas 3 horas</option>
+            </select>
+          </div>
+        </div>
+        <div class="flex flex-wrap items-center gap-3 justify-between">
+          <p class="text-xs text-slate-400">Os filtros de operação e tráfego são obrigatórios. Caso o período não seja informado, será utilizado o dia mais recente disponível.</p>
+          <button id="btn-aplicar" class="inline-flex items-center gap-2 bg-sky-600 hover:bg-sky-500 text-white font-semibold px-5 py-2.5 rounded-xl shadow-lg shadow-sky-900/40 transition-all">
+            <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M4 2a2 2 0 00-2 2v2.5A1.5 1.5 0 003.5 8h13A1.5 1.5 0 0018 6.5V4a2 2 0 00-2-2H4z" /><path fill-rule="evenodd" d="M18 9.5a.5.5 0 00-.5-.5h-15a.5.5 0 00-.5.5v4A2.5 2.5 0 004.5 16h11a2.5 2.5 0 002.5-2.5v-4z" clip-rule="evenodd" /></svg>
+            Aplicar filtros
+          </button>
+        </div>
+      </div>
+
+      <div id="analysis-wrapper" class="space-y-8"></div>
+    </section>
+
+    <section id="view-config" class="hidden space-y-6">
+      <div class="card rounded-2xl p-6 space-y-5">
+        <div class="flex items-center justify-between gap-3">
+          <h2 class="text-lg font-semibold text-slate-100">Mapear URLs por Operação</h2>
+          <button id="btn-reset-operacao" class="text-xs text-slate-400 hover:text-slate-200">Limpar formulário</button>
+        </div>
+        <form id="form-operacao" class="grid md:grid-cols-4 gap-4">
+          <input type="hidden" id="operacao-id" />
+          <div class="md:col-span-2">
+            <label class="block text-sm text-slate-400 mb-1">Operação</label>
+            <input id="operacao-nome" class="w-full pill rounded-lg px-3 py-2 bg-slate-900/40 text-slate-100" placeholder="Ex: Retenção US" />
+          </div>
+          <div class="md:col-span-2">
+            <label class="block text-sm text-slate-400 mb-1">URL</label>
+            <input id="operacao-url" class="w-full pill rounded-lg px-3 py-2 bg-slate-900/40 text-slate-100" placeholder="Ex: exemplo.com/oferta" />
+          </div>
+          <div class="md:col-span-4">
+            <label class="block text-sm text-slate-400 mb-1">Observação (opcional)</label>
+            <input id="operacao-nota" class="w-full pill rounded-lg px-3 py-2 bg-slate-900/40 text-slate-100" placeholder="Notas internas" />
+          </div>
+          <div class="md:col-span-4 flex gap-3">
+            <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white font-semibold px-4 py-2 rounded-xl">Salvar</button>
+            <button type="button" id="btn-operacao-cancel" class="pill px-4 py-2 rounded-xl">Cancelar</button>
+          </div>
+        </form>
+        <div class="overflow-auto">
+          <table class="w-full text-sm min-w-full">
+            <thead class="text-slate-400 text-left">
+              <tr>
+                <th class="py-2 px-2 font-semibold">Operação</th>
+                <th class="py-2 px-2 font-semibold">URL</th>
+                <th class="py-2 px-2 font-semibold">Observação</th>
+                <th class="py-2 px-2 font-semibold w-32">Ações</th>
+              </tr>
+            </thead>
+            <tbody id="operacoes-lista" class="divide-y divide-slate-800/60"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card rounded-2xl p-6 space-y-5">
+        <h2 class="text-lg font-semibold text-slate-100">Configurar Tráfego e utm_source</h2>
+        <form id="form-trafego" class="grid md:grid-cols-3 gap-4">
+          <input type="hidden" id="trafego-id" />
+          <div>
+            <label class="block text-sm text-slate-400 mb-1">Tipo de tráfego</label>
+            <select id="trafego-tipo" class="w-full pill rounded-lg px-3 py-2 bg-slate-900/40 text-slate-100"></select>
+          </div>
+          <div class="md:col-span-2">
+            <label class="block text-sm text-slate-400 mb-1">utm_source</label>
+            <input id="trafego-source" class="w-full pill rounded-lg px-3 py-2 bg-slate-900/40 text-slate-100" placeholder="Ex: push-main" />
+          </div>
+          <div class="md:col-span-3 flex gap-3">
+            <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white font-semibold px-4 py-2 rounded-xl">Salvar</button>
+            <button type="button" id="btn-trafego-cancel" class="pill px-4 py-2 rounded-xl">Cancelar</button>
+          </div>
+        </form>
+        <div class="overflow-auto">
+          <table class="w-full text-sm min-w-full">
+            <thead class="text-slate-400 text-left">
+              <tr>
+                <th class="py-2 px-2 font-semibold">Tipo</th>
+                <th class="py-2 px-2 font-semibold">utm_source</th>
+                <th class="py-2 px-2 font-semibold w-28">Ações</th>
+              </tr>
+            </thead>
+            <tbody id="trafego-lista" class="divide-y divide-slate-800/60"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card rounded-2xl p-6 space-y-4">
+        <div class="flex items-center justify-between gap-3">
+          <h2 class="text-lg font-semibold text-slate-100">RevShare por Site</h2>
+          <span class="text-xs text-slate-400">Valores entre 0% e 100%. Aplicados em todas as métricas de receita.</span>
+        </div>
+        <div class="overflow-auto">
+          <table class="w-full text-sm min-w-full">
+            <thead class="text-slate-400 text-left">
+              <tr>
+                <th class="py-2 px-2 font-semibold">Site</th>
+                <th class="py-2 px-2 font-semibold">RevShare (%)</th>
+                <th class="py-2 px-2 font-semibold w-28">Ações</th>
+              </tr>
+            </thead>
+            <tbody id="revshare-lista" class="divide-y divide-slate-800/60"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div id="loading-overlay" class="hidden fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center z-50">
+    <div class="flex flex-col items-center gap-3 text-slate-200">
+      <svg class="w-10 h-10 animate-spin text-sky-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+      </svg>
+      <span class="text-sm">Carregando...</span>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var state = {
+        config: {
+          operations: [],
+          traffics: [],
+          revshare: [],
+          trafficTypes: []
+        },
+        groupedOperations: [],
+        trafficByType: {},
+        filters: {
+          operation: '',
+          traffic: '',
+          startDate: '',
+          endDate: '',
+          window: 'day'
+        },
+        analysis: null
+      };
+
+      document.addEventListener('DOMContentLoaded', function () {
+        bindTabs();
+        bindFilters();
+        bindForms();
+        loadConfig();
+      });
+
+      function bindTabs() {
+        var tabAnalise = document.getElementById('tab-analise');
+        var tabConfig = document.getElementById('tab-config');
+        var viewAnalise = document.getElementById('view-analise');
+        var viewConfig = document.getElementById('view-config');
+        tabAnalise.addEventListener('click', function () {
+          tabAnalise.classList.add('bg-blue-600', 'text-white');
+          tabConfig.classList.remove('bg-blue-600', 'text-white');
+          tabConfig.classList.add('text-slate-300');
+          viewAnalise.classList.remove('hidden');
+          viewConfig.classList.add('hidden');
+        });
+        tabConfig.addEventListener('click', function () {
+          tabConfig.classList.add('bg-blue-600', 'text-white');
+          tabAnalise.classList.remove('bg-blue-600', 'text-white');
+          tabAnalise.classList.add('text-slate-300');
+          viewConfig.classList.remove('hidden');
+          viewAnalise.classList.add('hidden');
+        });
+      }
+
+      function bindFilters() {
+        document.getElementById('filter-janela').addEventListener('change', function (ev) {
+          state.filters.window = ev.target.value;
+        });
+        document.getElementById('btn-aplicar').addEventListener('click', aplicarFiltros);
+      }
+
+      function bindForms() {
+        document.getElementById('btn-reset-operacao').addEventListener('click', resetOperacaoForm);
+        document.getElementById('btn-operacao-cancel').addEventListener('click', resetOperacaoForm);
+        document.getElementById('form-operacao').addEventListener('submit', function (ev) {
+          ev.preventDefault();
+          salvarOperacao();
+        });
+        document.getElementById('form-trafego').addEventListener('submit', function (ev) {
+          ev.preventDefault();
+          salvarTrafego();
+        });
+        document.getElementById('btn-trafego-cancel').addEventListener('click', resetTrafegoForm);
+      }
+
+      function loadConfig() {
+        showLoading(true);
+        google.script.run
+          .withSuccessHandler(function (data) {
+            showLoading(false);
+            state.config = data || state.config;
+            prepareConfig();
+            renderConfig();
+            renderFilters();
+          })
+          .withFailureHandler(handleError)
+          .getConfigData();
+      }
+
+      function prepareConfig() {
+        var grouped = {};
+        (state.config.operations || []).forEach(function (item) {
+          if (!item || !item.operation) return;
+          var key = item.operation;
+          if (!grouped[key]) {
+            grouped[key] = { name: key, urls: [], items: [] };
+          }
+          grouped[key].items.push(item);
+          if (item.url) grouped[key].urls.push(item.url);
+        });
+        state.groupedOperations = Object.keys(grouped).map(function (key) { return grouped[key]; }).sort(function (a, b) {
+          return a.name.localeCompare(b.name, 'pt-BR');
+        });
+        var trafficByType = {};
+        (state.config.traffics || []).forEach(function (item) {
+          if (!item || !item.type) return;
+          if (!trafficByType[item.type]) trafficByType[item.type] = [];
+          trafficByType[item.type].push(item.source);
+        });
+        state.trafficByType = trafficByType;
+      }
+
+      function renderFilters() {
+        var selectOp = document.getElementById('filter-operacao');
+        var current = selectOp.value;
+        selectOp.innerHTML = '<option value="">— selecione —</option>';
+        state.groupedOperations.forEach(function (group) {
+          var opt = document.createElement('option');
+          opt.value = group.name;
+          opt.textContent = group.name + ' (' + group.urls.length + ' URL' + (group.urls.length === 1 ? '' : 's') + ')';
+          selectOp.appendChild(opt);
+        });
+        if (current) selectOp.value = current;
+        selectOp.onchange = function (ev) {
+          state.filters.operation = ev.target.value;
+        };
+
+        var selectTr = document.getElementById('filter-trafego');
+        var currentTraffic = selectTr.value;
+        selectTr.innerHTML = '<option value="">— selecione —</option>';
+        (state.config.trafficTypes || []).forEach(function (type) {
+          var opt = document.createElement('option');
+          opt.value = type;
+          var count = (state.trafficByType[type] || []).length;
+          opt.textContent = type + (count ? ' · ' + count + ' fonte(s)' : '');
+          selectTr.appendChild(opt);
+        });
+        if (currentTraffic) selectTr.value = currentTraffic;
+        selectTr.onchange = function (ev) {
+          state.filters.traffic = ev.target.value;
+        };
+      }
+
+      function renderConfig() {
+        renderOperacoesTabela();
+        renderTrafegoTabela();
+        renderRevshareTabela();
+        renderTrafegoSelect();
+      }
+
+      function renderOperacoesTabela() {
+        var tbody = document.getElementById('operacoes-lista');
+        tbody.innerHTML = '';
+        if (!state.config.operations || !state.config.operations.length) {
+          tbody.innerHTML = '<tr><td colspan="4" class="px-2 py-3 text-center text-slate-400">Nenhuma operação cadastrada.</td></tr>';
+          return;
+        }
+        state.config.operations.sort(function (a, b) {
+          return a.operation.localeCompare(b.operation, 'pt-BR') || (a.url || '').localeCompare(b.url || '', 'pt-BR');
+        }).forEach(function (item) {
+          var tr = document.createElement('tr');
+          tr.innerHTML = [
+            '<td class="px-2 py-2 align-top">' + escapeHtml(item.operation || '') + '</td>',
+            '<td class="px-2 py-2 align-top text-sky-300 break-all">' + escapeHtml(item.url || '') + '</td>',
+            '<td class="px-2 py-2 align-top text-slate-400">' + escapeHtml(item.note || '') + '</td>',
+            '<td class="px-2 py-2 align-top"><div class="flex gap-2">' +
+              '<button class="px-2 py-1 pill rounded-lg text-xs" data-action="edit" data-id="' + item.id + '">Editar</button>' +
+              '<button class="px-2 py-1 bg-rose-600 hover:bg-rose-500 rounded-lg text-xs text-white" data-action="delete" data-id="' + item.id + '">Remover</button>' +
+            '</div></td>'
+          ].join('');
+          tbody.appendChild(tr);
+        });
+        tbody.querySelectorAll('button[data-action="edit"]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var id = btn.getAttribute('data-id');
+            var found = (state.config.operations || []).find(function (item) { return item.id === id; });
+            if (!found) return;
+            document.getElementById('operacao-id').value = found.id || '';
+            document.getElementById('operacao-nome').value = found.operation || '';
+            document.getElementById('operacao-url').value = found.url || '';
+            document.getElementById('operacao-nota').value = found.note || '';
+          });
+        });
+        tbody.querySelectorAll('button[data-action="delete"]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var id = btn.getAttribute('data-id');
+            if (!id) return;
+            if (!confirm('Remover este mapeamento?')) return;
+            showLoading(true);
+            google.script.run
+              .withSuccessHandler(function (data) {
+                showLoading(false);
+                showToast('Mapeamento removido.', 'success');
+                state.config = data;
+                prepareConfig();
+                renderConfig();
+                renderFilters();
+              })
+              .withFailureHandler(handleError)
+              .deleteOperationConfig(id);
+          });
+        });
+      }
+
+      function renderTrafegoSelect() {
+        var select = document.getElementById('trafego-tipo');
+        var current = select.value;
+        select.innerHTML = '';
+        (state.config.trafficTypes || []).forEach(function (type) {
+          var opt = document.createElement('option');
+          opt.value = type;
+          opt.textContent = type;
+          select.appendChild(opt);
+        });
+        if (current) select.value = current;
+      }
+
+      function renderTrafegoTabela() {
+        var tbody = document.getElementById('trafego-lista');
+        tbody.innerHTML = '';
+        if (!state.config.traffics || !state.config.traffics.length) {
+          tbody.innerHTML = '<tr><td colspan="3" class="px-2 py-3 text-center text-slate-400">Nenhuma fonte cadastrada.</td></tr>';
+          return;
+        }
+        state.config.traffics.sort(function (a, b) {
+          return a.type.localeCompare(b.type, 'pt-BR') || (a.source || '').localeCompare(b.source || '', 'pt-BR');
+        }).forEach(function (item) {
+          var tr = document.createElement('tr');
+          tr.innerHTML = [
+            '<td class="px-2 py-2">' + escapeHtml(item.type || '') + '</td>',
+            '<td class="px-2 py-2 text-sky-300 break-all">' + escapeHtml(item.source || '') + '</td>',
+            '<td class="px-2 py-2"><div class="flex gap-2">' +
+              '<button class="px-2 py-1 pill rounded-lg text-xs" data-action="edit" data-id="' + item.id + '">Editar</button>' +
+              '<button class="px-2 py-1 bg-rose-600 hover:bg-rose-500 rounded-lg text-xs text-white" data-action="delete" data-id="' + item.id + '">Remover</button>' +
+            '</div></td>'
+          ].join('');
+          tbody.appendChild(tr);
+        });
+        tbody.querySelectorAll('button[data-action="edit"]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var id = btn.getAttribute('data-id');
+            var found = (state.config.traffics || []).find(function (item) { return item.id === id; });
+            if (!found) return;
+            document.getElementById('trafego-id').value = found.id || '';
+            document.getElementById('trafego-tipo').value = found.type || '';
+            document.getElementById('trafego-source').value = found.source || '';
+          });
+        });
+        tbody.querySelectorAll('button[data-action="delete"]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var id = btn.getAttribute('data-id');
+            if (!id) return;
+            if (!confirm('Remover esta utm_source?')) return;
+            showLoading(true);
+            google.script.run
+              .withSuccessHandler(function (data) {
+                showLoading(false);
+                showToast('utm_source removida.', 'success');
+                state.config = data;
+                prepareConfig();
+                renderConfig();
+                renderFilters();
+              })
+              .withFailureHandler(handleError)
+              .deleteTrafficConfig(id);
+          });
+        });
+      }
+
+      function renderRevshareTabela() {
+        var tbody = document.getElementById('revshare-lista');
+        tbody.innerHTML = '';
+        if (!state.config.revshare || !state.config.revshare.length) {
+          tbody.innerHTML = '<tr><td colspan="3" class="px-2 py-3 text-center text-slate-400">Nenhum site identificado a partir das URLs cadastradas.</td></tr>';
+          return;
+        }
+        state.config.revshare.sort(function (a, b) {
+          return (a.site || '').localeCompare(b.site || '', 'pt-BR');
+        }).forEach(function (item) {
+          var tr = document.createElement('tr');
+          tr.innerHTML = [
+            '<td class="px-2 py-2">' + escapeHtml(item.site || '') + '</td>',
+            '<td class="px-2 py-2"><input type="number" min="0" max="100" step="0.01" class="w-32 pill rounded-lg px-2 py-1 bg-slate-900/40 text-slate-100" value="' + formatInputNumber(item.revshare) + '" data-site="' + escapeHtml(item.site || '') + '" /></td>',
+            '<td class="px-2 py-2"><button class="px-3 py-1 bg-teal-600 hover:bg-teal-500 text-white rounded-lg text-xs" data-site="' + escapeHtml(item.site || '') + '">Salvar</button></td>'
+          ].join('');
+          tbody.appendChild(tr);
+        });
+        tbody.querySelectorAll('button').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var site = btn.getAttribute('data-site');
+            var row = btn.closest('tr');
+            var input = row ? row.querySelector('input[type="number"]') : null;
+            if (!input) return;
+            var value = input.value;
+            if (value !== '' && (Number(value) < 0 || Number(value) > 100)) {
+              showToast('Informe um RevShare entre 0 e 100.', 'error');
+              return;
+            }
+            showLoading(true);
+            google.script.run
+              .withSuccessHandler(function (data) {
+                showLoading(false);
+                showToast('RevShare atualizado.', 'success');
+                state.config = data;
+                prepareConfig();
+                renderConfig();
+                renderFilters();
+              })
+              .withFailureHandler(handleError)
+              .updateRevShare({ site: site, revshare: value });
+          });
+        });
+      }
+
+      function salvarOperacao() {
+        var payload = {
+          id: document.getElementById('operacao-id').value,
+          operation: document.getElementById('operacao-nome').value,
+          url: document.getElementById('operacao-url').value,
+          note: document.getElementById('operacao-nota').value
+        };
+        if (!payload.operation) {
+          showToast('Informe o nome da operação.', 'error');
+          return;
+        }
+        if (!payload.url) {
+          showToast('Informe a URL.', 'error');
+          return;
+        }
+        showLoading(true);
+        google.script.run
+          .withSuccessHandler(function (data) {
+            showLoading(false);
+            showToast('Mapeamento salvo com sucesso.', 'success');
+            resetOperacaoForm();
+            state.config = data;
+            prepareConfig();
+            renderConfig();
+            renderFilters();
+          })
+          .withFailureHandler(handleError)
+          .saveOperationConfig(payload);
+      }
+
+      function salvarTrafego() {
+        var payload = {
+          id: document.getElementById('trafego-id').value,
+          type: document.getElementById('trafego-tipo').value,
+          source: document.getElementById('trafego-source').value
+        };
+        if (!payload.type) {
+          showToast('Selecione o tipo de tráfego.', 'error');
+          return;
+        }
+        if (!payload.source) {
+          showToast('Informe a utm_source.', 'error');
+          return;
+        }
+        showLoading(true);
+        google.script.run
+          .withSuccessHandler(function (data) {
+            showLoading(false);
+            showToast('utm_source salva.', 'success');
+            resetTrafegoForm();
+            state.config = data;
+            prepareConfig();
+            renderConfig();
+            renderFilters();
+          })
+          .withFailureHandler(handleError)
+          .saveTrafficConfig(payload);
+      }
+
+      function resetOperacaoForm() {
+        document.getElementById('operacao-id').value = '';
+        document.getElementById('operacao-nome').value = '';
+        document.getElementById('operacao-url').value = '';
+        document.getElementById('operacao-nota').value = '';
+      }
+
+      function resetTrafegoForm() {
+        document.getElementById('trafego-id').value = '';
+        document.getElementById('trafego-source').value = '';
+      }
+
+      function aplicarFiltros() {
+        var operation = document.getElementById('filter-operacao').value;
+        var traffic = document.getElementById('filter-trafego').value;
+        var startDate = document.getElementById('filter-inicio').value;
+        var endDate = document.getElementById('filter-fim').value;
+        var window = document.getElementById('filter-janela').value;
+        if (!operation) {
+          showToast('Selecione uma operação.', 'error');
+          return;
+        }
+        if (!traffic) {
+          showToast('Selecione um tipo de tráfego.', 'error');
+          return;
+        }
+        state.filters.operation = operation;
+        state.filters.traffic = traffic;
+        state.filters.startDate = startDate;
+        state.filters.endDate = endDate;
+        state.filters.window = window;
+        showLoading(true);
+        google.script.run
+          .withSuccessHandler(function (data) {
+            showLoading(false);
+            state.analysis = data;
+            renderAnalysis();
+          })
+          .withFailureHandler(handleError)
+          .getDashboardData({
+            operation: operation,
+            traffic: traffic,
+            startDate: startDate,
+            endDate: endDate,
+            urlWindow: window
+          });
+      }
+
+      function renderAnalysis() {
+        var wrapper = document.getElementById('analysis-wrapper');
+        wrapper.innerHTML = '';
+        var data = state.analysis;
+        var siteRows = data && data.site && data.site.rows ? data.site.rows.length : 0;
+        var urlRows = data && data.url && data.url.rows ? data.url.rows.length : 0;
+        if (!data || (!siteRows && !urlRows)) {
+          wrapper.innerHTML = '<div class="card rounded-2xl p-6 text-center text-slate-400">Nenhum dado encontrado para os filtros selecionados.</div>';
+          document.getElementById('latest-info').textContent = '';
+          return;
+        }
+        document.getElementById('latest-info').textContent = data.filters && data.filters.latestHour ? ('Última hora descartada: ' + data.filters.latestHour) : '';
+        if (siteRows) {
+          wrapper.appendChild(renderSiteCard(data.site));
+        }
+        if (urlRows) {
+          wrapper.appendChild(renderUrlCard(data.url, data.filters));
+        }
+      }
+
+      function renderSiteCard(siteData) {
+        var card = document.createElement('div');
+        card.className = 'card rounded-2xl p-6 space-y-4';
+        var title = document.createElement('h3');
+        title.className = 'text-lg font-semibold text-slate-100';
+        title.textContent = 'Resumo por Site (últimas horas válidas)';
+        card.appendChild(title);
+        if (!siteData.rows || !siteData.rows.length) {
+          var empty = document.createElement('div');
+          empty.className = 'text-sm text-slate-400';
+          empty.textContent = 'Sem dados de site para os filtros selecionados.';
+          card.appendChild(empty);
+          return card;
+        }
+        var hours = siteData.hours || [];
+        var hoursHeaders = hours.map(function (h) { return h.label; });
+        var table = document.createElement('div');
+        table.className = 'overflow-auto';
+        var html = '';
+        html += '<table class="w-full text-sm min-w-max">';
+        html += '<thead class="text-slate-300">';
+        html += '<tr>' +
+          '<th rowspan="2" class="px-3 py-2 text-left font-semibold">Site</th>' +
+          '<th colspan="' + (hoursHeaders.length + 1) + '" class="px-3 py-2 text-center font-semibold">Sessões</th>' +
+          '<th colspan="' + (hoursHeaders.length + 1) + '" class="px-3 py-2 text-center font-semibold">Receita ($)</th>' +
+          '<th colspan="' + (hoursHeaders.length + 1) + '" class="px-3 py-2 text-center font-semibold">RPS ($)</th>' +
+          '</tr>';
+        html += '<tr>';
+        hoursHeaders.forEach(function (h) { html += '<th class="px-3 py-2 font-medium text-center">' + h + '</th>'; });
+        html += '<th class="px-3 py-2 font-medium text-center">Total</th>';
+        hoursHeaders.forEach(function (h) { html += '<th class="px-3 py-2 font-medium text-center">' + h + '</th>'; });
+        html += '<th class="px-3 py-2 font-medium text-center">Total</th>';
+        hoursHeaders.forEach(function (h) { html += '<th class="px-3 py-2 font-medium text-center">' + h + '</th>'; });
+        html += '<th class="px-3 py-2 font-medium text-center">Total</th>';
+        html += '</tr>';
+        html += '</thead>';
+        html += '<tbody class="divide-y divide-slate-800/60">';
+        (siteData.rows || []).forEach(function (row) {
+          html += '<tr>';
+          html += '<td class="px-3 py-2 font-medium text-slate-100">' + escapeHtml(row.site) + '</td>';
+          hours.forEach(function (hour) {
+            html += '<td class="px-3 py-2 text-center">' + formatNumber(row.sessions[hour.key]) + '</td>';
+          });
+          html += '<td class="px-3 py-2 text-center font-semibold">' + formatNumber(row.totalSessions) + '</td>';
+          hours.forEach(function (hour) {
+            html += '<td class="px-3 py-2 text-center">' + formatCurrency(row.revenue[hour.key]) + '</td>';
+          });
+          html += '<td class="px-3 py-2 text-center font-semibold">' + formatCurrency(row.totalRevenue) + '</td>';
+          hours.forEach(function (hour) {
+            html += '<td class="px-3 py-2 text-center">' + formatCurrency(row.rps[hour.key]) + '</td>';
+          });
+          html += '<td class="px-3 py-2 text-center font-semibold">' + formatCurrency(row.totalRps) + '</td>';
+          html += '</tr>';
+        });
+        if (siteData.totals) {
+          html += '<tr class="bg-slate-900/60 text-slate-100 font-semibold">';
+          html += '<td class="px-3 py-2">Total</td>';
+          hours.forEach(function (hour) {
+            html += '<td class="px-3 py-2 text-center">' + formatNumber(siteData.totals.sessions[hour.key]) + '</td>';
+          });
+          html += '<td class="px-3 py-2 text-center">' + formatNumber(siteData.totals.totalSessions) + '</td>';
+          hours.forEach(function (hour) {
+            html += '<td class="px-3 py-2 text-center">' + formatCurrency(siteData.totals.revenue[hour.key]) + '</td>';
+          });
+          html += '<td class="px-3 py-2 text-center">' + formatCurrency(siteData.totals.totalRevenue) + '</td>';
+          hours.forEach(function (hour) {
+            html += '<td class="px-3 py-2 text-center">' + formatCurrency(siteData.totals.rps[hour.key]) + '</td>';
+          });
+          html += '<td class="px-3 py-2 text-center">' + formatCurrency(siteData.totals.totalRps) + '</td>';
+          html += '</tr>';
+        }
+        html += '</tbody></table>';
+        table.innerHTML = html;
+        card.appendChild(table);
+        return card;
+      }
+
+      function renderUrlCard(urlData, filters) {
+        var card = document.createElement('div');
+        card.className = 'card rounded-2xl p-6 space-y-4';
+        var header = document.createElement('div');
+        header.className = 'flex items-center justify-between gap-3 flex-wrap';
+        var title = document.createElement('h3');
+        title.className = 'text-lg font-semibold text-slate-100';
+        title.textContent = 'Resumo por URL';
+        var info = document.createElement('span');
+        info.className = 'text-xs text-slate-400';
+        var windowMap = {
+          'day': 'Dia completo (exceto última hora)',
+          'last6h': 'Últimas 6 horas válidas',
+          'last3h': 'Últimas 3 horas válidas'
+        };
+        info.textContent = windowMap[filters && filters.window] || '';
+        header.appendChild(title);
+        header.appendChild(info);
+        card.appendChild(header);
+        if (!urlData.rows || !urlData.rows.length) {
+          var empty = document.createElement('div');
+          empty.className = 'text-sm text-slate-400';
+          empty.textContent = 'Sem dados suficientes para a janela selecionada.';
+          card.appendChild(empty);
+          return card;
+        }
+        var table = document.createElement('div');
+        table.className = 'overflow-auto';
+        var html = '';
+        html += '<table class="w-full text-sm min-w-max">';
+        html += '<thead class="text-slate-300">';
+        html += '<tr>' +
+          '<th class="px-3 py-2 text-left font-semibold">URL</th>' +
+          '<th class="px-3 py-2 text-left font-semibold">Site</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">Sessões</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">Receita ($)</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">RPS ($)</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">Cobertura (%)</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">eCPM ($)</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">eCPM Efetivo ($)</th>' +
+          '</tr>';
+        html += '</thead><tbody class="divide-y divide-slate-800/60">';
+        urlData.rows.forEach(function (row) {
+          html += '<tr>' +
+            '<td class="px-3 py-2 text-sky-300 break-all">' + escapeHtml(row.url || '') + '</td>' +
+            '<td class="px-3 py-2">' + escapeHtml(row.site || '') + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatNumber(row.sessions) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatCurrency(row.revenue) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatCurrency(row.rps) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatPercent(row.coverage) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatCurrency(row.ecpm) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatCurrency(row.effectiveEcpm) + '</td>' +
+            '</tr>';
+        });
+        if (urlData.totals) {
+          html += '<tr class="bg-slate-900/60 text-slate-100 font-semibold">' +
+            '<td class="px-3 py-2" colspan="2">Total</td>' +
+            '<td class="px-3 py-2 text-right">' + formatNumber(urlData.totals.sessions) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatCurrency(urlData.totals.revenue) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatCurrency(urlData.totals.rps) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatPercent(urlData.totals.coverage) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatCurrency(urlData.totals.ecpm) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatCurrency(urlData.totals.effectiveEcpm) + '</td>' +
+            '</tr>';
+        }
+        html += '</tbody></table>';
+        table.innerHTML = html;
+        card.appendChild(table);
+        return card;
+      }
+
+      function formatNumber(value) {
+        var number = Number(value || 0);
+        if (!number) return '0';
+        return number.toLocaleString('pt-BR', { maximumFractionDigits: 0 });
+      }
+
+      function formatCurrency(value) {
+        var number = Number(value || 0);
+        return '$ ' + number.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      }
+
+      function formatPercent(value) {
+        var number = Number(value || 0);
+        return number.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' %';
+      }
+
+      function formatInputNumber(value) {
+        if (value === null || value === undefined || value === '') return '';
+        var number = Number(value);
+        if (isNaN(number)) return '';
+        return number.toFixed(2);
+      }
+
+      function escapeHtml(str) {
+        if (str == null) return '';
+        return String(str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#039;');
+      }
+
+      function showLoading(show) {
+        document.getElementById('loading-overlay').classList.toggle('hidden', !show);
+      }
+
+      function showToast(message, type) {
+        var container = document.getElementById('toast-container');
+        var toast = document.createElement('div');
+        toast.className = 'toast ' + (type === 'success' ? 'toast-success' : type === 'error' ? 'toast-error' : 'toast-info');
+        toast.textContent = message;
+        container.appendChild(toast);
+        setTimeout(function () {
+          toast.classList.add('hide');
+          setTimeout(function () { toast.remove(); }, 400);
+        }, 3000);
+      }
+
+      function handleError(error) {
+        showLoading(false);
+        showToast(error && error.message ? error.message : 'Erro ao executar ação.', 'error');
+        console.error(error);
+      }
+    })();
+  </script>
+</body>
+</html>
