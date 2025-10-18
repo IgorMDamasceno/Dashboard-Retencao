@@ -99,6 +99,18 @@
       background: rgba(15, 23, 42, 0.35);
       border-right: 1px solid rgba(148, 163, 184, 0.22);
     }
+    .scroll-list-10 {
+      max-height: 24rem;
+      overflow-y: auto;
+      overflow-x: auto;
+      overscroll-behavior: contain;
+    }
+    .scroll-list-15 {
+      max-height: 32rem;
+      overflow-y: auto;
+      overflow-x: auto;
+      overscroll-behavior: contain;
+    }
   </style>
 </head>
 <body class="text-slate-200">
@@ -207,7 +219,11 @@
             <button type="button" id="btn-operacao-cancel" class="pill px-4 py-2 rounded-xl">Cancelar</button>
           </div>
         </form>
-        <div class="overflow-auto">
+        <div class="flex items-center justify-between gap-3 flex-wrap">
+          <label for="operacao-busca" class="text-xs uppercase tracking-wide text-slate-400">Filtrar</label>
+          <input id="operacao-busca" type="search" class="pill px-3 py-2 rounded-lg bg-slate-900/40 text-sm text-slate-100 w-full md:w-72" placeholder="Buscar por operação, URL ou observação" />
+        </div>
+        <div class="overflow-auto scroll-list-10">
           <table class="w-full text-sm min-w-full">
             <thead class="text-slate-400 text-left">
               <tr>
@@ -239,7 +255,11 @@
             <button type="button" id="btn-trafego-cancel" class="pill px-4 py-2 rounded-xl">Cancelar</button>
           </div>
         </form>
-        <div class="overflow-auto">
+        <div class="flex items-center justify-between gap-3 flex-wrap">
+          <label for="trafego-busca" class="text-xs uppercase tracking-wide text-slate-400">Filtrar</label>
+          <input id="trafego-busca" type="search" class="pill px-3 py-2 rounded-lg bg-slate-900/40 text-sm text-slate-100 w-full md:w-64" placeholder="Buscar por tipo ou utm_source" />
+        </div>
+        <div class="overflow-auto scroll-list-10">
           <table class="w-full text-sm min-w-full">
             <thead class="text-slate-400 text-left">
               <tr>
@@ -258,7 +278,11 @@
           <h2 class="text-lg font-semibold text-slate-100">RevShare por Site</h2>
           <span class="text-xs text-slate-400">Valores entre 0% e 100%. Aplicados em todas as métricas de receita.</span>
         </div>
-        <div class="overflow-auto">
+        <div class="flex items-center justify-between gap-3 flex-wrap">
+          <label for="revshare-busca" class="text-xs uppercase tracking-wide text-slate-400">Filtrar</label>
+          <input id="revshare-busca" type="search" class="pill px-3 py-2 rounded-lg bg-slate-900/40 text-sm text-slate-100 w-full md:w-64" placeholder="Buscar por site" />
+        </div>
+        <div class="overflow-auto scroll-list-10">
           <table class="w-full text-sm min-w-full">
             <thead class="text-slate-400 text-left">
               <tr>
@@ -306,6 +330,12 @@
           site: { key: 'totalRevenue', direction: 'desc' },
           url: { key: 'revenue', direction: 'desc' }
         },
+        search: {
+          operations: '',
+          traffics: '',
+          revshare: '',
+          url: ''
+        },
         analysis: null
       };
 
@@ -313,6 +343,7 @@
         bindTabs();
         bindFilters();
         bindForms();
+        bindSearchInputs();
         loadConfig();
       });
 
@@ -356,6 +387,33 @@
           salvarTrafego();
         });
         document.getElementById('btn-trafego-cancel').addEventListener('click', resetTrafegoForm);
+      }
+
+      function bindSearchInputs() {
+        var opSearch = document.getElementById('operacao-busca');
+        if (opSearch) {
+          opSearch.value = state.search.operations || '';
+          opSearch.addEventListener('input', function (ev) {
+            state.search.operations = ev.target.value;
+            renderOperacoesTabela();
+          });
+        }
+        var trafegoSearch = document.getElementById('trafego-busca');
+        if (trafegoSearch) {
+          trafegoSearch.value = state.search.traffics || '';
+          trafegoSearch.addEventListener('input', function (ev) {
+            state.search.traffics = ev.target.value;
+            renderTrafegoTabela();
+          });
+        }
+        var revshareSearch = document.getElementById('revshare-busca');
+        if (revshareSearch) {
+          revshareSearch.value = state.search.revshare || '';
+          revshareSearch.addEventListener('input', function (ev) {
+            state.search.revshare = ev.target.value;
+            renderRevshareTabela();
+          });
+        }
       }
 
       function loadConfig() {
@@ -435,12 +493,30 @@
 
       function renderOperacoesTabela() {
         var tbody = document.getElementById('operacoes-lista');
+        if (!tbody) return;
         tbody.innerHTML = '';
-        if (!state.config.operations || !state.config.operations.length) {
+        var searchValue = (state.search.operations || '').trim().toLowerCase();
+        var input = document.getElementById('operacao-busca');
+        if (input && input.value !== state.search.operations) {
+          input.value = state.search.operations || '';
+        }
+        var items = (state.config.operations || []).slice();
+        if (!items.length) {
           tbody.innerHTML = '<tr><td colspan="4" class="px-2 py-3 text-center text-slate-400">Nenhuma operação cadastrada.</td></tr>';
           return;
         }
-        state.config.operations.sort(function (a, b) {
+        if (searchValue) {
+          items = items.filter(function (item) {
+            return ['operation', 'url', 'note'].some(function (key) {
+              return String(item[key] || '').toLowerCase().indexOf(searchValue) !== -1;
+            });
+          });
+        }
+        if (!items.length) {
+          tbody.innerHTML = '<tr><td colspan="4" class="px-2 py-3 text-center text-slate-400">Nenhum resultado para o filtro informado.</td></tr>';
+          return;
+        }
+        items.sort(function (a, b) {
           return a.operation.localeCompare(b.operation, 'pt-BR') || (a.url || '').localeCompare(b.url || '', 'pt-BR');
         }).forEach(function (item) {
           var tr = document.createElement('tr');
@@ -502,12 +578,30 @@
 
       function renderTrafegoTabela() {
         var tbody = document.getElementById('trafego-lista');
+        if (!tbody) return;
         tbody.innerHTML = '';
-        if (!state.config.traffics || !state.config.traffics.length) {
+        var searchValue = (state.search.traffics || '').trim().toLowerCase();
+        var input = document.getElementById('trafego-busca');
+        if (input && input.value !== state.search.traffics) {
+          input.value = state.search.traffics || '';
+        }
+        var items = (state.config.traffics || []).slice();
+        if (!items.length) {
           tbody.innerHTML = '<tr><td colspan="3" class="px-2 py-3 text-center text-slate-400">Nenhuma fonte cadastrada.</td></tr>';
           return;
         }
-        state.config.traffics.sort(function (a, b) {
+        if (searchValue) {
+          items = items.filter(function (item) {
+            return ['type', 'source'].some(function (key) {
+              return String(item[key] || '').toLowerCase().indexOf(searchValue) !== -1;
+            });
+          });
+        }
+        if (!items.length) {
+          tbody.innerHTML = '<tr><td colspan="3" class="px-2 py-3 text-center text-slate-400">Nenhum resultado para o filtro informado.</td></tr>';
+          return;
+        }
+        items.sort(function (a, b) {
           return a.type.localeCompare(b.type, 'pt-BR') || (a.source || '').localeCompare(b.source || '', 'pt-BR');
         }).forEach(function (item) {
           var tr = document.createElement('tr');
@@ -554,12 +648,30 @@
 
       function renderRevshareTabela() {
         var tbody = document.getElementById('revshare-lista');
+        if (!tbody) return;
         tbody.innerHTML = '';
-        if (!state.config.revshare || !state.config.revshare.length) {
+        var searchValue = (state.search.revshare || '').trim().toLowerCase();
+        var input = document.getElementById('revshare-busca');
+        if (input && input.value !== state.search.revshare) {
+          input.value = state.search.revshare || '';
+        }
+        var items = (state.config.revshare || []).slice();
+        if (!items.length) {
           tbody.innerHTML = '<tr><td colspan="3" class="px-2 py-3 text-center text-slate-400">Nenhum site identificado a partir das URLs cadastradas.</td></tr>';
           return;
         }
-        state.config.revshare.sort(function (a, b) {
+        if (searchValue) {
+          items = items.filter(function (item) {
+            return ['site', 'revshare'].some(function (key) {
+              return String(item[key] || '').toLowerCase().indexOf(searchValue) !== -1;
+            });
+          });
+        }
+        if (!items.length) {
+          tbody.innerHTML = '<tr><td colspan="3" class="px-2 py-3 text-center text-slate-400">Nenhum resultado para o filtro informado.</td></tr>';
+          return;
+        }
+        items.sort(function (a, b) {
           return (a.site || '').localeCompare(b.site || '', 'pt-BR');
         }).forEach(function (item) {
           var tr = document.createElement('tr');
@@ -944,16 +1056,64 @@
         header.appendChild(title);
         header.appendChild(info);
         card.appendChild(header);
-        if (!urlData.rows || !urlData.rows.length) {
-          var empty = document.createElement('div');
-          empty.className = 'text-sm text-slate-400';
-          empty.textContent = 'Sem dados suficientes para a janela selecionada.';
-          card.appendChild(empty);
+        var baseRows = urlData.rows || [];
+        var searchWrapper = document.createElement('div');
+        searchWrapper.className = 'flex items-center justify-between gap-3 flex-wrap';
+        var searchLabel = document.createElement('label');
+        searchLabel.setAttribute('for', 'url-busca');
+        searchLabel.className = 'text-xs uppercase tracking-wide text-slate-400';
+        searchLabel.textContent = 'Filtrar';
+        var searchInput = document.createElement('input');
+        searchInput.id = 'url-busca';
+        searchInput.type = 'search';
+        searchInput.className = 'pill px-3 py-2 rounded-lg bg-slate-900/40 text-sm text-slate-100 w-full md:w-80';
+        searchInput.placeholder = 'Buscar por URL';
+        searchInput.value = state.search.url || '';
+        searchInput.addEventListener('input', function (ev) {
+          var value = ev.target.value;
+          var caret = ev.target.selectionStart || value.length;
+          state.search.url = value;
+          renderAnalysis();
+          requestAnimationFrame(function () {
+            var input = document.getElementById('url-busca');
+            if (input) {
+              input.focus();
+              var next = Math.min(input.value.length, caret);
+              try {
+                input.setSelectionRange(next, next);
+              } catch (e) {
+                // ignore
+              }
+            }
+          });
+        });
+        searchWrapper.appendChild(searchLabel);
+        searchWrapper.appendChild(searchInput);
+        card.appendChild(searchWrapper);
+        if (!baseRows.length) {
+          var emptyBase = document.createElement('div');
+          emptyBase.className = 'text-sm text-slate-400';
+          emptyBase.textContent = 'Sem dados suficientes para a janela selecionada.';
+          card.appendChild(emptyBase);
           return card;
         }
-        var rows = sortUrlRows(urlData.rows || []);
+        var searchValue = (state.search.url || '').trim().toLowerCase();
+        var filteredRows = baseRows;
+        if (searchValue) {
+          filteredRows = baseRows.filter(function (row) {
+            return String(row.url || '').toLowerCase().indexOf(searchValue) !== -1;
+          });
+        }
+        if (!filteredRows.length) {
+          var emptyFilter = document.createElement('div');
+          emptyFilter.className = 'text-sm text-slate-400';
+          emptyFilter.textContent = 'Nenhuma URL encontrada para o filtro informado.';
+          card.appendChild(emptyFilter);
+          return card;
+        }
+        var rows = sortUrlRows(filteredRows || []);
         var table = document.createElement('div');
-        table.className = 'overflow-auto';
+        table.className = 'overflow-auto scroll-list-15';
         var html = '';
         html += '<table class="w-full text-sm min-w-max">';
         html += '<thead class="text-slate-300">';
