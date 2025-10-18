@@ -69,6 +69,36 @@
       font-size: 0.65rem;
       opacity: 0.7;
     }
+    .metric-group {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      border-top: 1px solid rgba(148, 163, 184, 0.18);
+      border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+    }
+    .metric-group-sessions { background: rgba(56, 189, 248, 0.18); color: #e0f2fe; }
+    .metric-group-revenue { background: rgba(16, 185, 129, 0.18); color: #dcfce7; }
+    .metric-group-rps { background: rgba(249, 115, 22, 0.18); color: #ffedd5; }
+    .metric-sub {
+      font-size: 0.75rem;
+      background: rgba(15, 23, 42, 0.45);
+    }
+    .metric-sub-sessions { background: rgba(56, 189, 248, 0.12); }
+    .metric-sub-revenue { background: rgba(16, 185, 129, 0.12); }
+    .metric-sub-rps { background: rgba(249, 115, 22, 0.12); }
+    .metric-cell-sessions { background: rgba(56, 189, 248, 0.06); }
+    .metric-cell-revenue { background: rgba(16, 185, 129, 0.06); }
+    .metric-cell-rps { background: rgba(249, 115, 22, 0.06); }
+    .metric-divider { border-left: 1px solid rgba(148, 163, 184, 0.22); }
+    .metric-total { background: rgba(15, 23, 42, 0.55); font-weight: 600; }
+    .site-header {
+      background: rgba(15, 23, 42, 0.55);
+      border-right: 1px solid rgba(148, 163, 184, 0.22);
+    }
+    .site-cell {
+      background: rgba(15, 23, 42, 0.35);
+      border-right: 1px solid rgba(148, 163, 184, 0.22);
+    }
   </style>
 </head>
 <body class="text-slate-200">
@@ -815,56 +845,77 @@
         var table = document.createElement('div');
         table.className = 'overflow-auto';
         var html = '';
+        var sessionsSubHeaders = '';
+        var revenueSubHeaders = '';
+        var rpsSubHeaders = '';
+        hoursHeaders.forEach(function (h, index) {
+          var dividerClass = index === 0 ? ' metric-divider' : '';
+          sessionsSubHeaders += '<th class="px-3 py-2 font-medium text-center metric-sub metric-sub-sessions' + dividerClass + '">' + h + '</th>';
+          revenueSubHeaders += '<th class="px-3 py-2 font-medium text-center metric-sub metric-sub-revenue' + dividerClass + '">' + h + '</th>';
+          rpsSubHeaders += '<th class="px-3 py-2 font-medium text-center metric-sub metric-sub-rps' + dividerClass + '">' + h + '</th>';
+        });
+        sessionsSubHeaders += '<th class="px-3 py-2 font-semibold text-center metric-sub metric-sub-sessions metric-total metric-divider">Total</th>';
+        revenueSubHeaders += '<th class="px-3 py-2 font-semibold text-center metric-sub metric-sub-revenue metric-total metric-divider">Total</th>';
+        rpsSubHeaders += '<th class="px-3 py-2 font-semibold text-center metric-sub metric-sub-rps metric-total metric-divider">Total</th>';
+
         html += '<table class="w-full text-sm min-w-max">';
-        html += '<thead class="text-slate-300">';
+        html += '<thead class="text-slate-200">';
         html += '<tr>' +
-          '<th rowspan="2" class="px-3 py-2 text-left font-semibold align-middle">' + buildSortHeader('site', 'site', 'Site', 'left') + '</th>' +
-          '<th colspan="' + (hoursHeaders.length + 1) + '" class="px-3 py-2 text-center font-semibold">' + buildSortHeader('site', 'totalSessions', 'Sessões', 'center') + '</th>' +
-          '<th colspan="' + (hoursHeaders.length + 1) + '" class="px-3 py-2 text-center font-semibold">' + buildSortHeader('site', 'totalRevenue', 'Receita ($)', 'center') + '</th>' +
-          '<th colspan="' + (hoursHeaders.length + 1) + '" class="px-3 py-2 text-center font-semibold">' + buildSortHeader('site', 'totalRps', 'RPS ($)', 'center') + '</th>' +
+          '<th rowspan="2" class="px-3 py-3 text-left font-semibold align-middle site-header">' + buildSortHeader('site', 'site', 'Site', 'left') + '</th>' +
+          '<th colspan="' + (hoursHeaders.length + 1) + '" class="px-3 py-2 text-center font-semibold metric-group metric-group-sessions metric-divider">' + buildSortHeader('site', 'totalSessions', 'Sessões', 'center') + '</th>' +
+          '<th colspan="' + (hoursHeaders.length + 1) + '" class="px-3 py-2 text-center font-semibold metric-group metric-group-revenue metric-divider">' + buildSortHeader('site', 'totalRevenue', 'Receita ($)', 'center') + '</th>' +
+          '<th colspan="' + (hoursHeaders.length + 1) + '" class="px-3 py-2 text-center font-semibold metric-group metric-group-rps metric-divider">' + buildSortHeader('site', 'totalRps', 'RPS ($)', 'center') + '</th>' +
           '</tr>';
-        html += '<tr>';
-        hoursHeaders.forEach(function (h) { html += '<th class="px-3 py-2 font-medium text-center">' + h + '</th>'; });
-        html += '<th class="px-3 py-2 font-medium text-center">Total</th>';
-        hoursHeaders.forEach(function (h) { html += '<th class="px-3 py-2 font-medium text-center">' + h + '</th>'; });
-        html += '<th class="px-3 py-2 font-medium text-center">Total</th>';
-        hoursHeaders.forEach(function (h) { html += '<th class="px-3 py-2 font-medium text-center">' + h + '</th>'; });
-        html += '<th class="px-3 py-2 font-medium text-center">Total</th>';
-        html += '</tr>';
+        html += '<tr>' + sessionsSubHeaders + revenueSubHeaders + rpsSubHeaders + '</tr>';
         html += '</thead>';
         html += '<tbody class="divide-y divide-slate-800/60">';
         rows.forEach(function (row) {
           html += '<tr>';
-          html += '<td class="px-3 py-2 font-medium text-slate-100">' + escapeHtml(row.site) + '</td>';
-          hours.forEach(function (hour) {
-            html += '<td class="px-3 py-2 text-center">' + formatNumber(row.sessions[hour.key]) + '</td>';
+          html += '<td class="px-3 py-2 font-medium text-slate-100 site-cell">' + escapeHtml(row.site) + '</td>';
+          hours.forEach(function (hour, index) {
+            var classes = 'px-3 py-2 text-center metric-cell-sessions';
+            if (index === 0) classes += ' metric-divider';
+            html += '<td class="' + classes + '">' + formatNumber(row.sessions[hour.key]) + '</td>';
           });
-          html += '<td class="px-3 py-2 text-center font-semibold">' + formatNumber(row.totalSessions) + '</td>';
-          hours.forEach(function (hour) {
-            html += '<td class="px-3 py-2 text-center">' + formatCurrency(row.revenue[hour.key]) + '</td>';
+          var sessionsTotalClass = 'px-3 py-2 text-center metric-cell-sessions metric-total metric-divider';
+          html += '<td class="' + sessionsTotalClass + '">' + formatNumber(row.totalSessions) + '</td>';
+          hours.forEach(function (hour, index) {
+            var classes = 'px-3 py-2 text-center metric-cell-revenue';
+            if (index === 0) classes += ' metric-divider';
+            html += '<td class="' + classes + '">' + formatCurrency(row.revenue[hour.key]) + '</td>';
           });
-          html += '<td class="px-3 py-2 text-center font-semibold">' + formatCurrency(row.totalRevenue) + '</td>';
-          hours.forEach(function (hour) {
-            html += '<td class="px-3 py-2 text-center">' + formatCurrency(row.rps[hour.key]) + '</td>';
+          var revenueTotalClass = 'px-3 py-2 text-center metric-cell-revenue metric-total metric-divider';
+          html += '<td class="' + revenueTotalClass + '">' + formatCurrency(row.totalRevenue) + '</td>';
+          hours.forEach(function (hour, index) {
+            var classes = 'px-3 py-2 text-center metric-cell-rps';
+            if (index === 0) classes += ' metric-divider';
+            html += '<td class="' + classes + '">' + formatCurrency(row.rps[hour.key]) + '</td>';
           });
-          html += '<td class="px-3 py-2 text-center font-semibold">' + formatCurrency(row.totalRps) + '</td>';
+          var rpsTotalClass = 'px-3 py-2 text-center metric-cell-rps metric-total metric-divider';
+          html += '<td class="' + rpsTotalClass + '">' + formatCurrency(row.totalRps) + '</td>';
           html += '</tr>';
         });
         if (siteData.totals) {
           html += '<tr class="bg-slate-900/60 text-slate-100 font-semibold">';
-          html += '<td class="px-3 py-2">Total</td>';
-          hours.forEach(function (hour) {
-            html += '<td class="px-3 py-2 text-center">' + formatNumber(siteData.totals.sessions[hour.key]) + '</td>';
+          html += '<td class="px-3 py-2 site-cell metric-total">Total</td>';
+          hours.forEach(function (hour, index) {
+            var classes = 'px-3 py-2 text-center metric-cell-sessions';
+            if (index === 0) classes += ' metric-divider';
+            html += '<td class="' + classes + '">' + formatNumber(siteData.totals.sessions[hour.key]) + '</td>';
           });
-          html += '<td class="px-3 py-2 text-center">' + formatNumber(siteData.totals.totalSessions) + '</td>';
-          hours.forEach(function (hour) {
-            html += '<td class="px-3 py-2 text-center">' + formatCurrency(siteData.totals.revenue[hour.key]) + '</td>';
+          html += '<td class="px-3 py-2 text-center metric-cell-sessions metric-total metric-divider">' + formatNumber(siteData.totals.totalSessions) + '</td>';
+          hours.forEach(function (hour, index) {
+            var classes = 'px-3 py-2 text-center metric-cell-revenue';
+            if (index === 0) classes += ' metric-divider';
+            html += '<td class="' + classes + '">' + formatCurrency(siteData.totals.revenue[hour.key]) + '</td>';
           });
-          html += '<td class="px-3 py-2 text-center">' + formatCurrency(siteData.totals.totalRevenue) + '</td>';
-          hours.forEach(function (hour) {
-            html += '<td class="px-3 py-2 text-center">' + formatCurrency(siteData.totals.rps[hour.key]) + '</td>';
+          html += '<td class="px-3 py-2 text-center metric-cell-revenue metric-total metric-divider">' + formatCurrency(siteData.totals.totalRevenue) + '</td>';
+          hours.forEach(function (hour, index) {
+            var classes = 'px-3 py-2 text-center metric-cell-rps';
+            if (index === 0) classes += ' metric-divider';
+            html += '<td class="' + classes + '">' + formatCurrency(siteData.totals.rps[hour.key]) + '</td>';
           });
-          html += '<td class="px-3 py-2 text-center">' + formatCurrency(siteData.totals.totalRps) + '</td>';
+          html += '<td class="px-3 py-2 text-center metric-cell-rps metric-total metric-divider">' + formatCurrency(siteData.totals.totalRps) + '</td>';
           html += '</tr>';
         }
         html += '</tbody></table>';

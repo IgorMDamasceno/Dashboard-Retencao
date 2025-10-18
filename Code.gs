@@ -327,16 +327,16 @@ function getHourTimeline_(rows) {
     };
   }
   var latestHour = list[list.length - 1];
-  var windowCandidates = list.slice(-4);
-  if (windowCandidates.length && windowCandidates[windowCandidates.length - 1] === latestHour) {
-    windowCandidates.pop();
-  }
-  var windowHours = windowCandidates.map(function (stamp) {
-    return {
+  var hourMs = 60 * 60 * 1000;
+  var windowHours = [];
+  for (var offset = 3; offset >= 1; offset--) {
+    var stamp = latestHour - offset * hourMs;
+    windowHours.push({
       key: stamp,
-      label: formatHourFromTimestamp_(stamp)
-    };
-  });
+      label: formatHourFromTimestamp_(stamp),
+      hasData: !!unique[stamp]
+    });
+  }
   return {
     allHours: list,
     windowHours: windowHours,
@@ -473,39 +473,51 @@ function buildUrlSummary_(rows, revshareMap) {
         site: row.site,
         sessions: 0,
         revenue: 0,
-        weightedRequests: 0,
-        coverageWeighted: 0,
-        ecpmWeighted: 0
+        mobTopBlocks: {}
       };
     }
     var data = map[key];
     var revshare = toNumber_(revshareMap[row.site] || 0) / 100;
     var adjustedRevenue = row.revenue * (1 - revshare);
     data.revenue += adjustedRevenue;
-    var rowCoverageRatio = row.coverage > 1 ? row.coverage / 100 : row.coverage;
     if (row.isInterstitial) {
       data.sessions += row.requests;
-      data.coverageWeighted += rowCoverageRatio * row.requests;
-      data.ecpmWeighted += (row.ecpm * (1 - revshare)) * row.requests;
-      data.weightedRequests += row.requests;
+    }
+    if (row.block && /mob_top/i.test(row.block)) {
+      var blockKey = String(row.block || '').trim();
+      if (!data.mobTopBlocks[blockKey]) {
+        data.mobTopBlocks[blockKey] = {
+          requests: 0,
+          coverageWeighted: 0,
+          adjustedEcpmWeighted: 0
+        };
+      }
+      var blockData = data.mobTopBlocks[blockKey];
+      var rowCoverageRatio = row.coverage > 1 ? row.coverage / 100 : row.coverage;
+      blockData.requests += row.requests;
+      blockData.coverageWeighted += rowCoverageRatio * row.requests;
+      blockData.adjustedEcpmWeighted += (row.ecpm * (1 - revshare)) * row.requests;
     }
   });
+
   var rowsOut = [];
   var totals = {
     sessions: 0,
     revenue: 0,
-    weightedRequests: 0,
-    coverageWeighted: 0,
-    ecpmWeighted: 0
+    mobTopRequests: 0,
+    mobTopCoverageWeighted: 0,
+    mobTopEcpmWeighted: 0
   };
+
   Object.keys(map).map(function (key) {
     return map[key];
   }).sort(function (a, b) {
     return b.revenue - a.revenue;
   }).forEach(function (data) {
-    var avgCoverageRatio = data.weightedRequests ? data.coverageWeighted / data.weightedRequests : 0;
+    var selectedBlock = selectMobTopBlock_(data.mobTopBlocks);
+    var avgCoverageRatio = selectedBlock.requests ? selectedBlock.coverageWeighted / selectedBlock.requests : 0;
     var coverage = avgCoverageRatio * 100;
-    var ecpm = data.weightedRequests ? data.ecpmWeighted / data.weightedRequests : 0;
+    var ecpm = selectedBlock.requests ? selectedBlock.adjustedEcpmWeighted / selectedBlock.requests : 0;
     rowsOut.push({
       url: data.url,
       site: data.site,
@@ -518,15 +530,16 @@ function buildUrlSummary_(rows, revshareMap) {
     });
     totals.sessions += data.sessions;
     totals.revenue += data.revenue;
-    totals.weightedRequests += data.weightedRequests;
-    totals.coverageWeighted += data.coverageWeighted;
-    totals.ecpmWeighted += data.ecpmWeighted;
+    totals.mobTopRequests += selectedBlock.requests;
+    totals.mobTopCoverageWeighted += selectedBlock.coverageWeighted;
+    totals.mobTopEcpmWeighted += selectedBlock.adjustedEcpmWeighted;
   });
+
   var totalsRow = null;
   if (rowsOut.length) {
-    var totalsCoverageRatio = totals.weightedRequests ? totals.coverageWeighted / totals.weightedRequests : 0;
+    var totalsCoverageRatio = totals.mobTopRequests ? totals.mobTopCoverageWeighted / totals.mobTopRequests : 0;
     var totalsCoverage = totalsCoverageRatio * 100;
-    var totalsEcpm = totals.weightedRequests ? totals.ecpmWeighted / totals.weightedRequests : 0;
+    var totalsEcpm = totals.mobTopRequests ? totals.mobTopEcpmWeighted / totals.mobTopRequests : 0;
     totalsRow = {
       sessions: totals.sessions,
       revenue: totals.revenue,
@@ -538,8 +551,27 @@ function buildUrlSummary_(rows, revshareMap) {
   }
   return {
     rows: rowsOut,
-    totals: totalsRow
+    totals: totalsRow,
+    windowLabel: ''
   };
+}
+
+function selectMobTopBlock_(blocks) {
+  var best = null;
+  Object.keys(blocks || {}).forEach(function (name) {
+    var block = blocks[name];
+    if (!best || block.requests > best.requests) {
+      best = block;
+    }
+  });
+  if (!best) {
+    return {
+      requests: 0,
+      coverageWeighted: 0,
+      adjustedEcpmWeighted: 0
+    };
+  }
+  return best;
 }
 
 function getConfigSnapshot_() {
