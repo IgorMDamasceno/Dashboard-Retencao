@@ -1,0 +1,907 @@
+// Code.gs
+
+const CONFIG_SHEET = 'Config - Operações';
+const PRICING_SHEET_ADSELETO = 'Precificação - AdSeleto';
+const PRICING_SHEET_IGOAL = 'Precificação - Igoal';
+const BASE_SHEET_CANDIDATES = ['Base de Dados','Base de Dados - Exemplo','BD - GAM','BD - GAM1'];
+const PART_ORDER = ['Quiz','P1','P2'];
+const HEADER_MAP = {
+  date: 'Data',
+  hour: 'Hora',
+  channel: 'Canal',
+  url: 'URL',
+  adunit: 'Bloco de Anúncio',
+  impressions: 'Impressões',
+  clicks: 'Cliques',
+  ctr: 'CTR',
+  revenue: 'Receita (USD)',
+  ecpm: 'eCPM',
+  requests: 'Solicitação AD',
+  coverage: 'Cobertura',
+  cpc: 'CPC',
+  viewability: 'Viewability',
+};
+const CONFIG_HEADERS = ['ID','Pessoa','Operação','PaginaQueda','Parte','Canal','URLs (;)','Rede','Moeda'];
+
+function doGet() {
+  return HtmlService.createTemplateFromFile('index')
+    .evaluate()
+    .setTitle('Dashboard de Operações')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+/* ==== helpers de planilha ==== */
+function getBaseSheet_() {
+  const ss = SpreadsheetApp.getActive();
+  for (var i=0;i<BASE_SHEET_CANDIDATES.length;i++) {
+    var name = BASE_SHEET_CANDIDATES[i];
+    var sh = ss.getSheetByName(name);
+    if (sh) return sh;
+  }
+  return ss.getSheets()[0];
+}
+
+function ensureConfigSheet_() {
+  const ss = SpreadsheetApp.getActive();
+  var sh = ss.getSheetByName(CONFIG_SHEET);
+  if (!sh) {
+    sh = ss.insertSheet(CONFIG_SHEET);
+    sh.getRange(1,1,1,CONFIG_HEADERS.length).setValues([CONFIG_HEADERS]);
+    sh.setFrozenRows(1);
+    return sh;
+  }
+
+  var lastCol = sh.getLastColumn();
+  if (lastCol < CONFIG_HEADERS.length) {
+    sh.insertColumnsAfter(lastCol, CONFIG_HEADERS.length - lastCol);
+    lastCol = CONFIG_HEADERS.length;
+  }
+  var currentHeaders = sh.getRange(1, 1, 1, lastCol).getValues()[0];
+  var needsUpdate = false;
+  for (var i = 0; i < CONFIG_HEADERS.length; i++) {
+    if (currentHeaders[i] !== CONFIG_HEADERS[i]) {
+      needsUpdate = true;
+      break;
+    }
+  }
+  if (needsUpdate) {
+    sh.getRange(1, 1, 1, CONFIG_HEADERS.length).setValues([CONFIG_HEADERS]);
+  }
+
+  return sh;
+}
+
+function ensurePricingSheetAdSeleto_() {
+  const ss = SpreadsheetApp.getActive();
+  var sh = ss.getSheetByName(PRICING_SHEET_ADSELETO);
+  if (!sh) {
+    sh = ss.insertSheet(PRICING_SHEET_ADSELETO);
+    sh.getRange(1, 1, 1, 7).setValues([
+      ['spnprice_id', 'domain_id', 'price_rule', 'utm_source', 'slot_id', 'url', 'Sincronizar']
+    ]);
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+
+function ensurePricingSheetIgoal_() {
+  const ss = SpreadsheetApp.getActive();
+  var sh = ss.getSheetByName(PRICING_SHEET_IGOAL);
+  if (!sh) {
+    sh = ss.insertSheet(PRICING_SHEET_IGOAL);
+    sh.getRange(1, 1, 1, 8).setValues([
+      ['rule_id', 'dominio', 'utm_source', 'url', 'bloco', 'company_id', 'price_rule', 'Sincronizar']
+    ]);
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+
+function getHeaderIndexMap_(headers) {
+  var map = {};
+  for (var i=0;i<headers.length;i++) map[String(headers[i]).trim()] = i;
+  return map;
+}
+
+/* ==== conversões ==== */
+function toNumber_(val) {
+  if (typeof val === 'number') return val;
+  if (val == null) return 0;
+  var s = String(val).trim();
+  if (!s) return 0;
+  s = s.replace(/\s/g,'').replace(/%/g,'');
+  s = s.replace(/\./g,'').replace(/,/g,'.');
+  var n = parseFloat(s);
+  return isNaN(n) ? 0 : n;
+}
+
+function formatPriceRuleIgoal_(value) {
+  if (value === null || value === undefined) return '';
+  var s = String(value).trim();
+  if (!s) return '';
+  s = s.replace(/,/g, '.');
+  var n = parseFloat(s);
+  if (isNaN(n)) return '';
+  return n.toFixed(2);
+}
+function normUrlStrict_(u) {
+  if (!u) return '';
+  var s = String(u).trim().toLowerCase();
+  s = s.replace(/^https?:\/\//,'');
+  s = s.replace(/^www\./,'');
+  s = s.split('#')[0];
+  s = s.split('?')[0];
+  s = s.replace(/\/+$/,'');
+  return s;
+}
+function parseDate_(v) {
+  if (v instanceof Date) return v;
+  var s = String(v || '').trim();
+  if (!s) return null;
+  var m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) return new Date(+m[1], +m[2]-1, +m[3]);
+  m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (m) return new Date(+m[3], +m[2]-1, +m[1]);
+  var d = new Date(s);
+  return isNaN(d) ? null : d;
+}
+
+/* ============= CONFIG ============= */
+function getConfig() {
+  var sh = ensureConfigSheet_();
+  var range = sh.getDataRange().getValues();
+  var headers = range[0] || [];
+  var rows = range.slice(1);
+  var idx = getHeaderIndexMap_(headers);
+  var data = [];
+  rows.forEach(function(r) {
+    var pessoa = String(r[idx['Pessoa']]||'').trim();
+    if (pessoa) {
+      data.push({
+        id: String(r[idx['ID']] || ''),
+        pessoa: pessoa,
+        operacao: String(r[idx['Operação']] || '').trim(),
+        pagina: String(r[idx['PaginaQueda']] || '').trim(),
+        parte: String(r[idx['Parte']] || '').trim(),
+        canal: String(r[idx['Canal']] || '').trim(),
+        urls: String(r[idx['URLs (;)']] || '').split(';').map(normUrlStrict_).filter(Boolean),
+        rede: String(r[idx['Rede']] || '').trim(),
+        moeda: (function(){
+          var moedaIdx = idx['Moeda'];
+          var moedaVal = moedaIdx != null ? String(r[moedaIdx] || '').trim().toUpperCase() : '';
+          return moedaVal || 'USD';
+        })()
+      });
+    }
+  });
+  var pessoasSet = {}, opsByPessoa = {}, paginasByOp = {};
+  data.forEach(function(d) {
+    pessoasSet[d.pessoa] = true;
+    if (!opsByPessoa[d.pessoa]) opsByPessoa[d.pessoa] = {};
+    opsByPessoa[d.pessoa][d.operacao] = true;
+    var key = d.pessoa + '||' + d.operacao;
+    if (!paginasByOp[key]) paginasByOp[key] = {};
+    paginasByOp[key][d.pagina] = true;
+  });
+  var pessoas = Object.keys(pessoasSet).sort();
+  var opsByPessoaObj = {};
+  Object.keys(opsByPessoa).forEach(p => { opsByPessoaObj[p] = Object.keys(opsByPessoa[p]).sort(); });
+  var paginasByOpObj = {};
+  Object.keys(paginasByOp).forEach(k => { paginasByOpObj[k] = Object.keys(paginasByOp[k]).sort(); });
+
+  return { rows: data, pessoas: pessoas, opsByPessoa: opsByPessoaObj, paginasByOp: paginasByOpObj };
+}
+
+function upsertConfig(row) {
+  var sh = ensureConfigSheet_();
+  var range = sh.getDataRange().getValues();
+  var headers = range[0] || [];
+  var idx = getHeaderIndexMap_(headers);
+  
+  if (row.id) {
+    for (var i = 1; i < range.length; i++) {
+      if (String(range[i][idx['ID']] || '').trim() === String(row.id).trim()) {
+        var values = [ row.id, row.pessoa, row.operacao, row.pagina, row.parte, row.canal, row.urls, row.rede, row.moeda || 'USD' ];
+        sh.getRange(i + 1, 1, 1, values.length).setValues([values]);
+        return { ok: true };
+      }
+    }
+  }
+
+  var newValues = [ Utilities.getUuid(), row.pessoa, row.operacao, row.pagina, row.parte, row.canal, row.urls, row.rede, row.moeda || 'USD' ];
+  sh.appendRow(newValues);
+  return { ok: true };
+}
+
+
+function deleteConfig(id) {
+  var sh = ensureConfigSheet_();
+  var range = sh.getDataRange().getValues();
+  var idx = getHeaderIndexMap_(range[0]);
+  for (var i = 1; i < range.length; i++) {
+    if (String(range[i][idx['ID']] || '') === String(id)) {
+      sh.deleteRow(i + 1);
+      return { ok: true };
+    }
+  }
+  return { ok: false, msg: 'ID não encontrado' };
+}
+
+/* ============= PRECIFICAÇÃO ============= */
+function getPricingRulesAdSeleto_() {
+  var sh = ensurePricingSheetAdSeleto_();
+  var values = sh.getDataRange().getValues();
+  var headers = values.shift() || [];
+  var idx = getHeaderIndexMap_(headers);
+  return values.map(function(row) {
+    return {
+      spnprice_id: row[idx['spnprice_id']],
+      domain_id: row[idx['domain_id']],
+      price_rule: row[idx['price_rule']],
+      utm_source: row[idx['utm_source']],
+      slot_id: row[idx['slot_id']],
+      url: row[idx['url']]
+    };
+  });
+}
+
+function upsertPricingRulesAdSeleto(rules) {
+  if (!rules || !rules.length) {
+    return { ok: false, message: 'Nenhuma regra para salvar.' };
+  }
+  var sh = ensurePricingSheetAdSeleto_();
+  var range = sh.getDataRange();
+  var values = range.getValues();
+  var headers = values[0];
+  var idx = getHeaderIndexMap_(headers);
+  var syncColumnIndex = headers.indexOf('Sincronizar') + 1;
+  if (syncColumnIndex === 0) {
+      throw new Error("A coluna 'Sincronizar' não foi encontrada na aba de precificação.");
+  }
+  
+  var updatedRules = [];
+
+  rules.forEach(function(rule) {
+    if (!rule.spnprice_id) {
+      rule.spnprice_id = new Date().getTime() + Math.floor(Math.random() * 1000);
+      var rowValues = [rule.spnprice_id, rule.domain_id, rule.price_rule, rule.utm_source, rule.slot_id, rule.url, "Sim"];
+      sh.appendRow(rowValues);
+    } else {
+      var found = false;
+      for (var i = 1; i < values.length; i++) {
+        if (String(values[i][idx['spnprice_id']]) === String(rule.spnprice_id)) {
+          var rowValues = [rule.spnprice_id, rule.domain_id, rule.price_rule, rule.utm_source, rule.slot_id, rule.url];
+          sh.getRange(i + 1, 1, 1, rowValues.length).setValues([rowValues]);
+          sh.getRange(i + 1, syncColumnIndex).setValue("Sim");
+          found = true;
+          break;
+        }
+      }
+      if(!found) {
+         var rowValues = [rule.spnprice_id, rule.domain_id, rule.price_rule, rule.utm_source, rule.slot_id, rule.url, "Sim"];
+        sh.appendRow(rowValues);
+      }
+    }
+    updatedRules.push(rule);
+  });
+  
+  return { ok: true, rules: updatedRules };
+}
+
+function getPricingRulesIgoal_() {
+  var sh = ensurePricingSheetIgoal_();
+  var values = sh.getDataRange().getValues();
+  var headers = values.shift() || [];
+  if (!headers.length) return [];
+  var idx = getHeaderIndexMap_(headers);
+  return values.map(function(row) {
+    return {
+      rule_id: row[idx['rule_id']],
+      dominio: row[idx['dominio']],
+      utm_source: row[idx['utm_source']],
+      url: row[idx['url']],
+      bloco: row[idx['bloco']],
+      company_id: row[idx['company_id']],
+      price_rule: formatPriceRuleIgoal_(row[idx['price_rule']])
+    };
+  });
+}
+
+function upsertPricingRulesIgoal(rules) {
+  if (!rules || !rules.length) {
+    return { ok: false, message: 'Nenhuma regra para salvar.' };
+  }
+  var sh = ensurePricingSheetIgoal_();
+  var range = sh.getDataRange();
+  var values = range.getValues();
+  var headers = values[0] || [];
+  var idx = getHeaderIndexMap_(headers);
+  var syncColumnIndex = headers.indexOf('Sincronizar') + 1;
+  if (syncColumnIndex === 0) {
+    throw new Error("A coluna 'Sincronizar' não foi encontrada na aba de precificação da Igoal.");
+  }
+
+  var updatedRules = [];
+
+  rules.forEach(function(rule) {
+    var formattedPrice = formatPriceRuleIgoal_(rule.price_rule);
+    rule.price_rule = formattedPrice;
+
+    if (!rule.rule_id) {
+      rule.rule_id = new Date().getTime() + Math.floor(Math.random() * 1000);
+      var rowValuesNew = [rule.rule_id, rule.dominio, rule.utm_source, rule.url, rule.bloco, rule.company_id, rule.price_rule, 'Sim'];
+      sh.appendRow(rowValuesNew);
+    } else {
+      var found = false;
+      for (var i = 1; i < values.length; i++) {
+        if (String(values[i][idx['rule_id']]) === String(rule.rule_id)) {
+          var rowValues = [rule.rule_id, rule.dominio, rule.utm_source, rule.url, rule.bloco, rule.company_id, rule.price_rule];
+          sh.getRange(i + 1, 1, 1, rowValues.length).setValues([rowValues]);
+          sh.getRange(i + 1, syncColumnIndex).setValue('Sim');
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        var rowValuesAppend = [rule.rule_id, rule.dominio, rule.utm_source, rule.url, rule.bloco, rule.company_id, rule.price_rule, 'Sim'];
+        sh.appendRow(rowValuesAppend);
+      }
+    }
+    updatedRules.push(rule);
+  });
+
+  return { ok: true, rules: updatedRules };
+}
+
+/* ============= DASHBOARD ============= */
+function getDashboardData(params) {
+  params = params || {};
+  var pessoa = params.pessoa, operacao = params.operacao, paginasSelecionadas = params.paginasSelecionadas || [],
+      startDate = params.startDate, endDate = params.endDate, granularity = params.granularity || 'hour';
+  var gran = (granularity === 'day' || granularity === 'last6h') ? granularity : 'hour';
+  var emptyReturn = { pages: [], compare: [], compareBlocks: [], granularity: gran, seriesChart: [], labelsChart: [], seriesChartByBlock: {}, pricingRulesAdSeleto: [], pricingRulesIgoal: [] };
+  if (!pessoa || !operacao || !paginasSelecionadas.length) return emptyReturn;
+
+  var cfgAll = getConfig().rows.filter(r => r.pessoa === pessoa && r.operacao === operacao);
+  var pageIndex = {};
+  cfgAll.forEach(r => {
+    if (paginasSelecionadas.includes(r.pagina)) {
+      if (!pageIndex[r.pagina]) pageIndex[r.pagina] = {};
+      pageIndex[r.pagina][r.parte] = { canal: r.canal, urls: r.urls, rede: r.rede, moeda: r.moeda };
+    }
+  });
+  var baseSh = getBaseSheet_();
+  var data = baseSh.getDataRange().getValues();
+  var headers = data[0] || [], idx = getHeaderIndexMap_(headers);
+  var rows = data.slice(1);
+  
+  var col = {
+    date: idx[HEADER_MAP.date], hour: idx[HEADER_MAP.hour], channel: idx[HEADER_MAP.channel], url: idx[HEADER_MAP.url],
+    adunit: idx[HEADER_MAP.adunit], impr: idx[HEADER_MAP.impressions], clicks: idx[HEADER_MAP.clicks], revenue: idx[HEADER_MAP.revenue],
+    req: idx[HEADER_MAP.requests], cov: idx[HEADER_MAP.coverage], view: idx[HEADER_MAP.viewability]
+  };
+  var minDate = startDate ? parseDate_(startDate) : null;
+  var maxDate = endDate ? parseDate_(endDate) : null;
+
+  var cutoffMs = null;
+  if (granularity === 'last6h') {
+    let maxMsMatched = 0;
+    rows.forEach(function(row) {
+        var d = parseDate_(row[col.date]);
+        var h = parseInt(row[col.hour], 10) || 0;
+        if(d) {
+            var ms = new Date(d.getFullYear(), d.getMonth(), d.getDate(), h, 0, 0, 0).getTime();
+            if (ms > maxMsMatched) maxMsMatched = ms;
+        }
+    });
+    if (maxMsMatched > 0) cutoffMs = maxMsMatched - (6 * 60 * 60 * 1000);
+  }
+
+  function rowDateOk_(row) {
+    var d = parseDate_(row[col.date]);
+    if (!d) return false;
+    if (granularity === 'last6h') {
+        if (cutoffMs === null) return false;
+        var h = parseInt(row[col.hour], 10) || 0;
+        var ms = new Date(d.getFullYear(), d.getMonth(), d.getDate(), h, 0, 0, 0).getTime();
+        return ms >= cutoffMs;
+    }
+    if (minDate && d < minDate) return false;
+    if (maxDate && d > maxDate) return false;
+    return true;
+  }
+
+  function matchParte_(row, parteCfg) {
+    if (!parteCfg) return false;
+    var rowCanal = String(row[col.channel] || '').toLowerCase();
+    var canalOk = !parteCfg.canal || rowCanal.includes(parteCfg.canal.toLowerCase());
+    var rowUrl = normUrlStrict_(row[col.url] || '');
+    return canalOk && (!parteCfg.urls.length || parteCfg.urls.some(u => rowUrl === u || rowUrl.startsWith(u + '/')));
+  }
+
+  function blankAgg_() {
+    return { impressions: 0, clicks: 0, revenue: 0, requests: 0, coverage_w_sum: 0, view_w_sum: 0, weight_w_sum: 0, coverage_sum: 0, view_sum: 0, row_count: 0 };
+  }
+
+  function pushRow_(agg, row) {
+    var impr = toNumber_(row[col.impr]);
+    var req = toNumber_(row[col.req]);
+    agg.impressions += impr;
+    agg.clicks += toNumber_(row[col.clicks]);
+    agg.revenue += toNumber_(row[col.revenue]);
+    agg.requests += req;
+    
+    agg.coverage_sum += toNumber_(row[col.cov]);
+    agg.view_sum += toNumber_(row[col.view]);
+    agg.row_count += 1;
+    
+    if (req > 0) {
+      agg.coverage_w_sum += toNumber_(row[col.cov]) * req;
+      agg.view_w_sum += toNumber_(row[col.view]) * req;
+      agg.weight_w_sum += req;
+    }
+  }
+
+  function finalizeAgg_(agg, useSimpleAverage) {
+    var impr=agg.impressions, clk=agg.clicks, rev=agg.revenue;
+    var ecpm = impr > 0 ? (rev * 1000 / impr) : 0;
+    var coverage, viewability;
+
+    if (useSimpleAverage) {
+      coverage = agg.row_count > 0 ? (agg.coverage_sum / agg.row_count) * 100 : 0;
+      viewability = agg.row_count > 0 ? (agg.view_sum / agg.row_count) * 100 : 0;
+    } else {
+      coverage = agg.weight_w_sum > 0 ? (agg.coverage_w_sum / agg.weight_w_sum) * 100 : 0;
+      viewability = agg.weight_w_sum > 0 ? (agg.view_w_sum / agg.weight_w_sum) * 100 : 0;
+    }
+    
+    return {
+      impressions: impr, clicks: clk, revenue: rev, requests: agg.requests,
+      ctr: impr > 0 ? (clk / impr) * 100 : 0, 
+      ecpm: ecpm, 
+      cpc: clk > 0 ? rev / clk : 0,
+      coverage: coverage, 
+      viewability: viewability, 
+      effectiveEcpm: ecpm * (coverage / 100)
+    };
+  }
+  
+  function classifyBlock_(adunit, parteName) {
+    var s = String(adunit || '').toLowerCase();
+    if (parteName === 'P1') {
+      if (s.includes('mob_top')) return {label:'mob_top (P1)', parte:'P1'};
+      if (s.includes('mob_interstitial')) return {label:'mob_interstitial (P1)', parte:'P1'};
+    } else if (parteName === 'P2') {
+      if (s.includes('mob_offerwall') || s.includes('mob_rewarded')) return {label:'mob_offerwall (P2)', parte:'P2'};
+      if (s.includes('mob_top')) return {label:'mob_top (P2)', parte:'P2'};
+    } else if (parteName === 'Quiz') {
+      if (s.includes('rewarded')) return {label:'rewarded (Quiz)', parte:'Quiz'};
+    }
+    return null;
+  }
+  
+  var aggByPageParte={}, detailHour={}, detailDay={}, blocksAgg={}, p1InterstitialReqByPage={}, pageHourAgg={}, blockHourAgg={};
+  rows.forEach(function(row) {
+    if (!rowDateOk_(row)) return;
+    var dBase = parseDate_(row[col.date]); if (!dBase) return;
+    var hBase = parseInt(row[col.hour],10) || 0;
+    var dtMs = new Date(dBase.getFullYear(), dBase.getMonth(), dBase.getDate(), hBase, 0, 0, 0).getTime();
+
+    for (var pg in pageIndex) {
+      PART_ORDER.forEach(function(parteName) {
+        var cfgParte = pageIndex[pg][parteName];
+        if (!cfgParte || !matchParte_(row, cfgParte)) return;
+
+        var aggKey = pg + '||' + parteName;
+        if (!aggByPageParte[aggKey]) aggByPageParte[aggKey] = blankAgg_();
+        pushRow_(aggByPageParte[aggKey], row);
+
+        var adunit = String(row[col.adunit] || '').trim() || '(sem adunit)';
+        var detailKey = gran==='day' ? `${pg}||${parteName}||${adunit}` : `${pg}||${parteName}||${hBase}||${adunit}`;
+        var detailAgg = gran === 'day' ? detailDay : detailHour;
+        if (!detailAgg[detailKey]) detailAgg[detailKey] = blankAgg_();
+        pushRow_(detailAgg[detailKey], row);
+        
+        var cat = classifyBlock_(adunit, parteName);
+        if (cat) {
+          var bk = `${pg}||${cat.label}`;
+          if (!blocksAgg[bk]) blocksAgg[bk] = { agg: blankAgg_(), parte: cat.parte, label: cat.label };
+          pushRow_(blocksAgg[bk].agg, row);
+          
+          var bhk = `${pg}||${cat.label}||${dtMs}`;
+          if (!blockHourAgg[bhk]) blockHourAgg[bhk] = blankAgg_();
+          pushRow_(blockHourAgg[bhk], row);
+        }
+
+        var keyMs = `${pg}||${dtMs}`;
+        if (parteName==='P1' && adunit.toLowerCase().includes('interstitial')) {
+          if (!p1InterstitialReqByPage[pg]) p1InterstitialReqByPage[pg] = 0;
+          p1InterstitialReqByPage[pg] += toNumber_(row[col.req]);
+          if (!pageHourAgg[keyMs]) pageHourAgg[keyMs] = { aggP1P2: blankAgg_(), reqP1Interstitial:0 };
+          pageHourAgg[keyMs].reqP1Interstitial += toNumber_(row[col.req]);
+        }
+        if (parteName==='P1' || parteName==='P2') {
+          if (!pageHourAgg[keyMs]) pageHourAgg[keyMs] = { aggP1P2: blankAgg_(), reqP1Interstitial:0 };
+          pushRow_(pageHourAgg[keyMs].aggP1P2, row);
+        }
+      });
+    }
+  });
+
+  var pages = [], compare = [], compareBlocks = [];
+  paginasSelecionadas.forEach(function(pgName) {
+    var parts = [], totAgg = blankAgg_();
+    PART_ORDER.forEach(function(pn2) {
+      if (pageIndex[pgName] && pageIndex[pgName][pn2]) {
+        var partAggregator = aggByPageParte[`${pgName}||${pn2}`] || blankAgg_();
+        var details = [];
+        var detailSource = gran === 'day' ? detailDay : detailHour;
+        Object.keys(detailSource).filter(k => k.startsWith(`${pgName}||${pn2}||`)).forEach(k => {
+          var p = k.split('||');
+          details.push({
+            hour: gran === 'day' ? null : parseInt(p[2], 10),
+            adunit: gran === 'day' ? p[2] : p.slice(3).join('||'),
+            metrics: finalizeAgg_(detailSource[k], gran !== 'day')
+          });
+        });
+
+        details.forEach(function(d) {
+          if (String(d.adunit).toLowerCase().match(/offerwall|rewarded/)) {
+            const m = d.metrics;
+            const perdaUsuario = (m.requests * (m.coverage / 100)) - m.impressions;
+            d.metrics.cpcCorrigido = ((m.clicks + Math.ceil(Math.max(0, perdaUsuario))) > 0) ?
+            (m.revenue / (m.clicks + Math.ceil(Math.max(0, perdaUsuario)))) : 0;
+          }
+        });
+        
+        parts.push({ 
+          parte: pn2, 
+          metrics: finalizeAgg_(partAggregator, false), 
+          details: details, 
+          meta: pageIndex[pgName][pn2] 
+        });
+
+        Object.keys(partAggregator).forEach(key => totAgg[key] += partAggregator[key]);
+      }
+    });
+    var totalFinal = finalizeAgg_(totAgg, false);
+    var reqInt = p1InterstitialReqByPage[pgName] || 0;
+    var revenueP1P2 = (aggByPageParte[`${pgName}||P1`]?.revenue||0) + (aggByPageParte[`${pgName}||P2`]?.revenue||0);
+    var clicksP1P2 = (aggByPageParte[`${pgName}||P1`]?.clicks||0) + (aggByPageParte[`${pgName}||P2`]?.clicks||0);
+    var rps = reqInt > 0 ? (revenueP1P2 / reqInt) * 1000 : 0;
+    var interactionRate = reqInt > 0 ? (clicksP1P2 / reqInt) * 100 : 0;
+    pages.push({ page: pgName, parts: parts, total: totalFinal, extras: { rps, interactionRate } });
+    compare.push({ page: pgName, ...totalFinal, rps, interactionRate });
+    Object.keys(blocksAgg).filter(k=>k.startsWith(`${pgName}||`)).forEach(k => {
+      compareBlocks.push({ page: pgName, label: blocksAgg[k].label, parte: blocksAgg[k].parte, metrics: finalizeAgg_(blocksAgg[k].agg, false) });
+    });
+  });
+  
+  var labelsChart = [], allHourMs = [...new Set(Object.keys(pageHourAgg).map(k => +k.split('||')[1]))];
+  if (allHourMs.length > 0) {
+    for (var t = Math.min(...allHourMs); t <= Math.max(...allHourMs); t += 3600000) labelsChart.push(t);
+  }
+
+  function generateSeries_(aggSource, keyGenFn) {
+    if (labelsChart.length === 0) return [];
+    return paginasSelecionadas.map(pgName => ({
+      page: pgName,
+      points: labelsChart.map(ms => {
+        var bucket = aggSource[keyGenFn(pgName, ms)] || {};
+        var metrics = finalizeAgg_(bucket.aggP1P2 || bucket || blankAgg_(), true);
+        var d = new Date(ms);
+        return {
+          label: `${('0'+d.getDate()).slice(-2)}/${('0'+(d.getMonth()+1)).slice(-2)} ${('0'+d.getHours()).slice(-2)}:00`,
+          rps: bucket.reqP1Interstitial > 0 ? (metrics.revenue / bucket.reqP1Interstitial * 1000) : 0,
+          interactionRate: bucket.reqP1Interstitial > 0 ? (metrics.clicks / bucket.reqP1Interstitial * 100) : 0,
+          ...metrics
+        };
+      })
+    }));
+  }
+
+  var seriesChart = generateSeries_(pageHourAgg, (pg, ms) => `${pg}||${ms}`);
+  var seriesChartByBlock = {};
+  ['mob_top (P1)', 'mob_interstitial (P1)', 'mob_offerwall (P2)', 'mob_top (P2)', 'rewarded (Quiz)'].forEach(blockLabel => {
+    seriesChartByBlock[blockLabel] = generateSeries_(blockHourAgg, (pg, ms) => `${pg}||${blockLabel}||${ms}`);
+  });
+  compare.sort((a,b) => b.revenue - a.revenue);
+  compareBlocks.sort((a,b) => (a.parte > b.parte) ? 1 : (a.parte < b.parte) ? -1 : (a.page > b.page) ? 1 : (a.page < b.page) ? -1 : b.metrics.revenue - a.metrics.revenue);
+  var pricingRulesAdSeleto = getPricingRulesAdSeleto_();
+  var pricingRulesIgoal = getPricingRulesIgoal_();
+
+  return { pages, compare, compareBlocks, granularity: gran, seriesChart, labelsChart, seriesChartByBlock, pricingRulesAdSeleto: pricingRulesAdSeleto, pricingRulesIgoal: pricingRulesIgoal };
+}
+
+function getCoordinationData(params) {
+  params = params || {};
+  var pessoa = params.pessoa;
+  var agrupamento = params.agrupamento === 'last6h' ? 'last6h' : 'day';
+  var startDate = params.startDate;
+  var endDate = params.endDate;
+
+  if (!pessoa) {
+    return { operations: [] };
+  }
+
+  var cfgRows = getConfig().rows.filter(function(r){ return r.pessoa === pessoa; });
+  if (!cfgRows.length) {
+    return { operations: [] };
+  }
+
+  var operationsMap = {};
+  cfgRows.forEach(function(row){
+    if (!operationsMap[row.operacao]) operationsMap[row.operacao] = { operacao: row.operacao, pages: {} };
+    if (!operationsMap[row.operacao].pages[row.pagina]) operationsMap[row.operacao].pages[row.pagina] = {};
+    operationsMap[row.operacao].pages[row.pagina][row.parte] = {
+      canal: row.canal,
+      urls: row.urls || [],
+      rede: row.rede,
+      moeda: row.moeda
+    };
+  });
+
+  var entries = cfgRows.map(function(row){
+    return {
+      operacao: row.operacao,
+      pagina: row.pagina,
+      parte: row.parte,
+      canal: row.canal,
+      urls: row.urls || []
+    };
+  });
+
+  if (!entries.length) {
+    return { operations: [] };
+  }
+
+  var baseSh = getBaseSheet_();
+  var data = baseSh.getDataRange().getValues();
+  if (!data.length) {
+    return { operations: Object.keys(operationsMap).map(function(name){ return { operacao: name, blocks: [] }; }) };
+  }
+
+  var headers = data[0] || [];
+  var idx = getHeaderIndexMap_(headers);
+  var rows = data.slice(1);
+
+  var col = {
+    date: idx[HEADER_MAP.date],
+    hour: idx[HEADER_MAP.hour],
+    channel: idx[HEADER_MAP.channel],
+    url: idx[HEADER_MAP.url],
+    adunit: idx[HEADER_MAP.adunit],
+    impressions: idx[HEADER_MAP.impressions],
+    clicks: idx[HEADER_MAP.clicks],
+    revenue: idx[HEADER_MAP.revenue],
+    requests: idx[HEADER_MAP.requests],
+    coverage: idx[HEADER_MAP.coverage],
+    viewability: idx[HEADER_MAP.viewability]
+  };
+
+  var minDate = startDate ? parseDate_(startDate) : null;
+  var maxDate = endDate ? parseDate_(endDate) : null;
+
+  var cutoffMs = null;
+  if (agrupamento === 'last6h') {
+    var maxMsMatched = 0;
+    rows.forEach(function(row){
+      var d = parseDate_(row[col.date]);
+      if (!d) return;
+      var h = parseInt(row[col.hour], 10) || 0;
+      var ms = new Date(d.getFullYear(), d.getMonth(), d.getDate(), h, 0, 0, 0).getTime();
+      if (ms > maxMsMatched) maxMsMatched = ms;
+    });
+    if (maxMsMatched > 0) cutoffMs = maxMsMatched - (6 * 60 * 60 * 1000);
+  }
+
+  function rowDateOk_(row) {
+    var d = parseDate_(row[col.date]);
+    if (!d) return false;
+    if (agrupamento === 'last6h') {
+      if (cutoffMs === null) return false;
+      var h = parseInt(row[col.hour], 10) || 0;
+      var ms = new Date(d.getFullYear(), d.getMonth(), d.getDate(), h, 0, 0, 0).getTime();
+      return ms >= cutoffMs;
+    }
+    if (minDate && d < minDate) return false;
+    if (maxDate && d > maxDate) return false;
+    return true;
+  }
+
+  function matchEntry_(row, entry) {
+    var rowCanal = String(row[col.channel] || '').toLowerCase();
+    if (entry.canal && rowCanal.indexOf(String(entry.canal).toLowerCase()) === -1) {
+      return false;
+    }
+    var normUrl = normUrlStrict_(row[col.url] || '');
+    var urls = entry.urls || [];
+    if (!urls.length) return true;
+    return urls.some(function(u){
+      return normUrl === u || normUrl.indexOf(u + '/') === 0;
+    });
+  }
+
+  function blankAgg_() {
+    return {
+      impressions: 0,
+      clicks: 0,
+      revenue: 0,
+      requests: 0,
+      coverage_w_sum: 0,
+      view_w_sum: 0,
+      weight_w_sum: 0,
+      coverage_sum: 0,
+      view_sum: 0,
+      row_count: 0
+    };
+  }
+
+  function pushRow_(agg, row) {
+    var impr = toNumber_(row[col.impressions]);
+    var clk = toNumber_(row[col.clicks]);
+    var rev = toNumber_(row[col.revenue]);
+    var req = toNumber_(row[col.requests]);
+    var cov = toNumber_(row[col.coverage]);
+    var view = toNumber_(row[col.viewability]);
+
+    agg.impressions += impr;
+    agg.clicks += clk;
+    agg.revenue += rev;
+    agg.requests += req;
+    agg.coverage_sum += cov;
+    agg.view_sum += view;
+    agg.row_count += 1;
+
+    if (req > 0) {
+      agg.coverage_w_sum += cov * req;
+      agg.view_w_sum += view * req;
+      agg.weight_w_sum += req;
+    }
+  }
+
+  function finalizeAgg_(agg) {
+    var impr = agg.impressions;
+    var clk = agg.clicks;
+    var rev = agg.revenue;
+    var req = agg.requests;
+
+    var coverage = agg.weight_w_sum > 0 ? (agg.coverage_w_sum / agg.weight_w_sum) * 100 : (agg.row_count > 0 ? (agg.coverage_sum / agg.row_count) * 100 : 0);
+    var viewability = agg.weight_w_sum > 0 ? (agg.view_w_sum / agg.weight_w_sum) * 100 : (agg.row_count > 0 ? (agg.view_sum / agg.row_count) * 100 : 0);
+
+    return {
+      impressions: impr,
+      clicks: clk,
+      revenue: rev,
+      requests: req,
+      ctr: impr > 0 ? (clk / impr) * 100 : 0,
+      ecpm: impr > 0 ? (rev * 1000 / impr) : 0,
+      cpc: clk > 0 ? rev / clk : 0,
+      coverage: coverage,
+      viewability: viewability
+    };
+  }
+
+  function classifyBlock_(adunit, parteName) {
+    var s = String(adunit || '').toLowerCase();
+    if (parteName === 'P1') {
+      if (s.indexOf('mob_top') !== -1) return { label: 'mob_top (P1)', parte: 'P1' };
+      if (s.indexOf('mob_interstitial') !== -1) return { label: 'mob_interstitial (P1)', parte: 'P1' };
+    } else if (parteName === 'P2') {
+      if (s.indexOf('mob_offerwall') !== -1 || s.indexOf('mob_rewarded') !== -1) return { label: 'mob_offerwall (P2)', parte: 'P2' };
+      if (s.indexOf('mob_top') !== -1) return { label: 'mob_top (P2)', parte: 'P2' };
+    } else if (parteName === 'Quiz') {
+      if (s.indexOf('rewarded') !== -1) return { label: 'rewarded (Quiz)', parte: 'Quiz' };
+    }
+    return null;
+  }
+
+  function mergeAgg_(target, source) {
+    if (!source) return;
+    target.impressions += source.impressions || 0;
+    target.clicks += source.clicks || 0;
+    target.revenue += source.revenue || 0;
+    target.requests += source.requests || 0;
+    target.coverage_w_sum += source.coverage_w_sum || 0;
+    target.view_w_sum += source.view_w_sum || 0;
+    target.weight_w_sum += source.weight_w_sum || 0;
+    target.coverage_sum += source.coverage_sum || 0;
+    target.view_sum += source.view_sum || 0;
+    target.row_count += source.row_count || 0;
+  }
+
+  function formatHourLabel_(ms) {
+    var d = new Date(ms);
+    var day = ('0' + d.getDate()).slice(-2);
+    var month = ('0' + (d.getMonth() + 1)).slice(-2);
+    var hour = ('0' + d.getHours()).slice(-2);
+    return day + '/' + month + ' ' + hour + 'h';
+  }
+
+  function buildSuggestionBasis_(baseKey, bucketMap) {
+    var prefix = baseKey + '||';
+    var hourKeys = Object.keys(bucketMap).filter(function(k){ return k.indexOf(prefix) === 0; }).map(function(k){
+      var parts = k.split('||');
+      return parts.length >= 4 ? +parts[3] : null;
+    }).filter(function(v){ return v; }).sort(function(a,b){ return a - b; });
+
+    if (hourKeys.length < 2) {
+      return { hasData: false };
+    }
+
+    var sliceStart = Math.max(0, hourKeys.length - 4);
+    var relevant = hourKeys.slice(sliceStart, hourKeys.length - 1);
+    if (!relevant.length) {
+      return { hasData: false };
+    }
+
+    var agg = blankAgg_();
+    relevant.forEach(function(ms){
+      var key = prefix + ms;
+      mergeAgg_(agg, bucketMap[key]);
+    });
+
+    var metrics = finalizeAgg_(agg);
+    var coverage = metrics.coverage || 0;
+    var perdaUsuario = (agg.requests * (coverage / 100)) - agg.impressions;
+    var correctedClicks = agg.clicks + Math.ceil(Math.max(0, perdaUsuario));
+    var cpcCorrigido = correctedClicks > 0 ? (agg.revenue / correctedClicks) : 0;
+
+    return {
+      hasData: true,
+      coverage: coverage,
+      cpc: metrics.cpc || 0,
+      cpcCorrigido: cpcCorrigido,
+      hoursUsed: relevant.map(formatHourLabel_)
+    };
+  }
+
+  var blockAgg = {};
+  var blockHourAgg = {};
+
+  rows.forEach(function(row){
+    if (!rowDateOk_(row)) return;
+    var d = parseDate_(row[col.date]);
+    if (!d) return;
+    var h = parseInt(row[col.hour], 10) || 0;
+    var ms = new Date(d.getFullYear(), d.getMonth(), d.getDate(), h, 0, 0, 0).getTime();
+
+    entries.forEach(function(entry){
+      if (!matchEntry_(row, entry)) return;
+      var adunit = String(row[col.adunit] || '').trim() || '(sem adunit)';
+      var classification = classifyBlock_(adunit, entry.parte);
+      if (!classification) return;
+      var baseKey = entry.operacao + '||' + entry.pagina + '||' + classification.label;
+      if (!blockAgg[baseKey]) blockAgg[baseKey] = blankAgg_();
+      pushRow_(blockAgg[baseKey], row);
+      var hourKey = baseKey + '||' + ms;
+      if (!blockHourAgg[hourKey]) blockHourAgg[hourKey] = blankAgg_();
+      pushRow_(blockHourAgg[hourKey], row);
+    });
+  });
+
+  var operations = Object.keys(operationsMap).map(function(opName){
+    var blocks = [];
+    Object.keys(blockAgg).forEach(function(key){
+      if (key.indexOf(opName + '||') !== 0) return;
+      var parts = key.split('||');
+      var pageName = parts[1];
+      var label = parts[2];
+      var agg = blockAgg[key];
+      var metrics = finalizeAgg_(agg);
+      var suggestionBasis = buildSuggestionBasis_(key, blockHourAgg);
+      var parte = '';
+      if (label.indexOf('(P1)') !== -1) parte = 'P1';
+      else if (label.indexOf('(P2)') !== -1) parte = 'P2';
+      else if (label.indexOf('(Quiz)') !== -1) parte = 'Quiz';
+      blocks.push({ page: pageName, label: label, parte: parte, metrics: metrics, suggestionBasis: suggestionBasis });
+    });
+    blocks.sort(function(a,b){
+      if (a.page !== b.page) return String(a.page || '').localeCompare(String(b.page || ''));
+      return String(a.label || '').localeCompare(String(b.label || ''));
+    });
+    return { operacao: opName, blocks: blocks };
+  });
+
+  return { operations: operations };
+}

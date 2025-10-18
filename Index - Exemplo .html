@@ -1,0 +1,2267 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <title>Dashboard de Operações</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    body { 
+      font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, 'Helvetica Neue', Arial;
+      background-color: #0f172a;
+      background-image: radial-gradient(circle at 1px 1px, #1e293b 1px, transparent 0);
+      background-size: 2rem 2rem;
+    }
+    @keyframes fadeIn { from {opacity:0; transform: translateY(10px)} to {opacity:1; transform: translateY(0)} }
+    .fade-in { animation: fadeIn .5s ease-out both; }
+    
+    .card { 
+      background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(51, 65, 85, 0.6);
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    }
+    .pill { 
+      background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(71, 85, 105, 0.6);
+      transition: all 0.2s ease-in-out;
+    }
+    .pill:hover { background: rgba(51, 65, 85, 0.8); border-color: rgba(100, 116, 139, 0.7); }
+    .chip { background: rgba(51, 65, 85, 0.7); border: 1px solid rgba(71, 85, 105, 0.6); }
+    .mono { font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace; }
+    .url-badge { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; display:inline-block; }
+    
+    tbody tr { transition: background-color 0.2s ease-in-out; }
+    tbody tr:hover { background-color: rgba(30, 41, 59, 0.6); }
+    .pricing-table td, .pricing-table th { padding: 8px; }
+    .pricing-table th { cursor: pointer; }
+
+    #toast-container { position: fixed; top: 1.25rem; right: 1.25rem; z-index: 50; display: flex; flex-direction: column; gap: 0.75rem; }
+    .toast {
+        display: flex; align-items: center; padding: 1rem; border-radius: 0.75rem; color: white;
+        box-shadow: 0 10px 15px -3px rgba(0,0,0,.3), 0 4px 6px -2px rgba(0,0,0,.15);
+        animation: toast-in 0.5s ease-out both; min-width: 300px; max-width: 400px;
+    }
+    .toast-success { background-color: #0f766e; border: 1px solid #042f2e; }
+    .toast-error { background-color: #be123c; border: 1px solid #450a0a; }
+    .toast-info { background-color: #0369a1; border: 1px solid #082f49; }
+    .toast-out { animation: toast-out 0.5s ease-in both; }
+    @keyframes toast-in { from { opacity: 0; transform: translateX(100%); } to { opacity: 1; transform: translateX(0); } }
+    @keyframes toast-out { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(100%); } }
+  </style>
+</head>
+<body class="text-slate-300">
+  <div class="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
+    <header class="fade-in card rounded-2xl p-6 mb-8">
+      <div class="flex items-center justify-between flex-wrap gap-4">
+        <div class="flex items-center gap-4">
+          <div class="flex-shrink-0 bg-slate-800 p-3 rounded-xl">
+            <svg class="w-8 h-8 text-teal-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h12A2.25 2.25 0 0020.25 14.25V3M3.75 3v-1.5A2.25 2.25 0 016 0h12A2.25 2.25 0 0120.25 1.5v1.5M3.75 3h16.5M16.5 6.75h.008v.008H16.5V6.75zM12 6.75h.008v.008H12V6.75zM12 11.25h.008v.008H12v- .008zM9.75 6.75h.008v.008H9.75V6.75zM7.5 11.25h.008v.008H7.5v-.008zm6.75-4.5h.008v.008h-.008V6.75zM9.75 11.25h.008v.008H9.75v-.008zm-2.25 0h.008v.008H7.5v-.008zm6.75 0h.008v.008h-.008v-.008zm-4.5 0h.008v.008h-.008v-.008z" /></svg>
+          </div>
+          <div>
+            <h1 class="text-2xl sm:text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-teal-300">
+              Dashboard de Operações
+            </h1>
+            <p class="text-slate-400 mt-1">Visualize o fluxo <b>Quiz → P1 → P2</b> por <i>Página de Queda</i> e compare os resultados.</p>
+          </div>
+        </div>
+      </div>
+      <div class="mt-6 inline-flex rounded-xl pill p-1">
+        <button id="tab-dash" class="px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold flex items-center gap-2 transition-all">
+          <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clip-rule="evenodd" /></svg>
+          Dashboard
+        </button>
+        <button id="tab-conf" class="px-4 py-2 rounded-lg text-slate-300 hover:text-white flex items-center gap-2 transition-all">
+          <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M5.433 13.917l1.262-3.155A4 4 0 017.58 9.42l6.92-6.918a2.121 2.121 0 013 3l-6.92 6.918c-.383.383-.84.685-1.343.886l-3.154 1.262a.5.5 0 01-.65-.65z" /><path d="M3.5 5.75c0-.69.56-1.25 1.25-1.25H10A.75.75 0 0010 3H4.75A2.75 2.75 0 002 5.75v9.5A2.75 2.75 0 004.75 18h9.5A2.75 2.75 0 0017 15.25V10a.75.75 0 00-1.5 0v5.25c0 .69-.56 1.25-1.25 1.25h-9.5c-.69 0-1.25-.56-1.25-1.25v-9.5z" /></svg>
+          Configurar
+        </button>
+        <button id="tab-coord" class="px-4 py-2 rounded-lg text-slate-300 hover:text-white flex items-center gap-2 transition-all">
+          <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2a.75.75 0 01.75.75V4h1.5A2.75 2.75 0 0115 6.75v.978a2.75 2.75 0 011.636 4.305l.999.999a.75.75 0 11-1.06 1.06l-.868-.868c-.46.333-1.017.526-1.622.526h-1.5v1.25a.75.75 0 01-1.5 0V12.75H8.25v1.25a.75.75 0 01-1.5 0V12.75h-1.5A2.75 2.75 0 012.5 10V6.75A2.75 2.75 0 015.25 4h1.5V2.75A.75.75 0 017.5 2zm0 3H5.25c-.69 0-1.25.56-1.25 1.25V10c0 .69.56 1.25 1.25 1.25h9.5c.69 0 1.25-.56 1.25-1.25V6.25c0-.69-.56-1.25-1.25-1.25H10z"/></svg>
+          Coordenação
+        </button>
+      </div>
+    </header>
+
+    <section id="view-dash" class="fade-in space-y-8">
+      <div class="card rounded-2xl p-6">
+        <h2 class="text-lg font-bold text-slate-100 mb-5 flex items-center gap-2">
+          <svg class="w-6 h-6 text-sky-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.572a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" /></svg>
+          Filtros
+        </h2>
+        <div class="grid sm:grid-cols-2 lg:grid-cols-6 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-400 mb-1">Pessoa</label>
+            <div id="f-pessoa-select" class="relative">
+              <button id="f-pessoa-toggle" type="button" class="w-full pill rounded-lg px-3 py-2 text-left text-sm" aria-haspopup="true" aria-expanded="false">
+                <span id="f-pessoa-summary" class="text-slate-300">— selecione —</span>
+              </button>
+              <div id="f-pessoa-panel" class="hidden card rounded-xl p-3 z-50 flex flex-col shadow-2xl max-h-80"></div>
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-400 mb-1">Operação</label>
+            <div id="f-operacao-select" class="relative">
+              <button id="f-operacao-toggle" type="button" class="w-full pill rounded-lg px-3 py-2 text-left text-sm" aria-haspopup="true" aria-expanded="false" disabled>
+                <span id="f-operacao-summary" class="text-slate-300">— selecione —</span>
+              </button>
+              <div id="f-operacao-panel" class="hidden card rounded-xl p-3 z-50 flex flex-col shadow-2xl max-h-80"></div>
+            </div>
+          </div>
+          <div class="lg:col-span-2">
+            <label class="block text-sm font-medium text-slate-400 mb-1">Páginas de Queda</label>
+            <div id="pq-select" class="relative">
+              <button id="pq-toggle" type="button" class="w-full pill rounded-lg px-3 py-2 text-left text-sm" aria-haspopup="true" aria-expanded="false">
+                <span id="pq-summary" class="text-slate-300">— selecione —</span>
+              </button>
+              <div id="pq-panel" class="hidden card rounded-xl p-3 z-50 flex flex-col shadow-2xl max-h-80"></div>
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-400 mb-1">Período</label>
+            <div class="grid grid-cols-2 gap-2">
+              <input id="f-start" type="date" class="w-full pill rounded-lg px-3 py-2 text-sm">
+              <input id="f-end" type="date" class="w-full pill rounded-lg px-3 py-2 text-sm">
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="block text-sm font-medium text-slate-400 mb-1">Agrupar</label>
+                <select id="f-gran" class="w-full pill rounded-lg px-3 py-2 text-sm">
+                  <option value="day">Dia (somatório)</option>
+                  <option value="hour" selected>Por hora</option>
+                  <option value="last6h">Últimas 6 horas</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-slate-400 mb-1">CPC Alvo</label>
+                <input id="f-cpc-alvo" type="number" step="0.01" class="w-full pill rounded-lg px-3 py-2 text-sm" placeholder="0.00">
+              </div>
+          </div>
+        </div>
+        <div class="mt-6 border-t border-slate-700/60 pt-4 flex items-center justify-between">
+          <div class="inline-flex rounded-xl pill p-1">
+            <button id="sub-ana" class="px-4 py-2 rounded-lg bg-teal-600 text-white font-semibold transition-all">Análise</button>
+            <button id="sub-comp" class="px-4 py-2 rounded-lg text-slate-300 hover:text-white transition-all">Comparativo</button>
+          </div>
+          <button id="btn-aplicar" class="bg-sky-600 hover:bg-sky-500 text-white font-semibold px-5 py-2.5 rounded-xl shadow-lg shadow-sky-900/50 transition-all duration-300 hover:shadow-xl hover:shadow-sky-700/40 flex items-center gap-2">
+            <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M10 3.75a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5a.75.75 0 01.75-.75zM10 8.75a.75.75 0 01.75.75v6.5a.75.75 0 01-1.5 0v-6.5a.75.75 0 01.75-.75zM3.25 5.25a.75.75 0 01.75-.75h1.5a.75.75 0 010 1.5h-1.5a.75.75 0 01-.75-.75zM3.25 10a.75.75 0 01.75-.75h4.5a.75.75 0 010 1.5h-4.5a.75.75 0 01-.75-.75zM3.25 14.75a.75.75 0 01.75-.75h1.5a.75.75 0 010 1.5h-1.5a.75.75 0 01-.75-.75zM12.75 5.25a.75.75 0 01.75-.75h4.5a.75.75 0 010 1.5h-4.5a.75.75 0 01-.75-.75zM12.75 10a.75.75 0 01.75-.75h1.5a.75.75 0 010 1.5h-1.5a.75.75 0 01-.75-.75zM12.75 14.75a.75.75 0 01.75-.75h4.5a.75.75 0 010 1.5h-4.5a.75.75 0 01-.75-.75z" /></svg>
+            Aplicar Filtros
+          </button>
+        </div>
+      </div>
+
+      <div id="analysis-content" class="space-y-8"></div>
+      <div id="compare-content" class="space-y-8 hidden"></div>
+    </section>
+
+    <section id="view-conf" class="hidden fade-in space-y-6">
+      <div class="card rounded-2xl p-6">
+        <h2 class="text-lg font-bold text-slate-100 mb-4">Configurar Operações</h2>
+        <form id="form-cfg" class="grid md:grid-cols-4 gap-4">
+          <input type="hidden" id="cfg-id">
+          <div><label class="block text-sm text-slate-400 mb-1">Pessoa</label><input id="cfg-pessoa" class="w-full pill rounded-lg px-3 py-2" placeholder="Ex: Igor"></div>
+          <div><label class="block text-sm text-slate-400 mb-1">Operação</label><input id="cfg-operacao" class="w-full pill rounded-lg px-3 py-2" placeholder="Ex: JN CC US"></div>
+          <div><label class="block text-sm text-slate-400 mb-1">Página de Queda</label><input id="cfg-pagina" class="w-full pill rounded-lg px-3 py-2" placeholder="Ex: PQ 1 – US Cards"></div>
+          <div><label class="block text-sm text-slate-400 mb-1">Parte</label><select id="cfg-parte" class="w-full pill rounded-lg px-3 py-2"><option>Quiz</option><option selected>P1</option><option>P2</option></select></div>
+          <div><label class="block text-sm text-slate-400 mb-1">Canal</label><input id="cfg-canal" class="w-full pill rounded-lg px-3 py-2" placeholder="Ex: utm_medium=rewarded"></div>
+          <div class="md:col-span-2"><label class="block text-sm text-slate-400 mb-1">URLs (separadas por “;”)</label><input id="cfg-urls" class="w-full pill rounded-lg px-3 py-2" placeholder="ex: us.site.com/p1;us.site.com/p2"></div>
+          <div>
+              <label class="block text-sm text-slate-400 mb-1">Rede</label>
+              <select id="cfg-rede" class="w-full pill rounded-lg px-3 py-2">
+                  <option value="">Nenhuma</option>
+                  <option>AdSeleto</option>
+                  <option>Igoal</option>
+                  <option>ActiveView</option>
+              </select>
+          </div>
+          <div>
+              <label class="block text-sm text-slate-400 mb-1">Moeda</label>
+              <select id="cfg-moeda" class="w-full pill rounded-lg px-3 py-2">
+                  <option value="USD" selected>USD</option>
+                  <option value="BRL">BRL</option>
+              </select>
+          </div>
+          <div class="md:col-span-4 flex gap-2"><button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white font-semibold px-4 py-2 rounded-xl" id="btn-salvar">Salvar</button><button type="button" class="pill px-4 py-2 rounded-xl" id="btn-limpar">Limpar</button></div>
+        </form>
+      </div>
+      <div class="card rounded-2xl p-6">
+        <h3 class="text-base font-bold text-slate-100 mb-3">Itens Configurados</h3>
+        <div class="overflow-auto"><table class="w-full text-sm"><thead class="text-slate-400"><tr><th class="text-left font-semibold py-2 px-2">Pessoa</th><th class="text-left font-semibold py-2 px-2">Operação</th><th class="text-left font-semibold py-2 px-2">Página</th><th class="text-left font-semibold py-2 px-2">Parte</th><th class="text-left font-semibold py-2 px-2">Canal</th><th class="text-left font-semibold py-2 px-2">URLs</th><th class="text-left font-semibold py-2 px-2">Rede</th><th class="text-left font-semibold py-2 px-2">Moeda</th><th class="text-left font-semibold py-2 px-2">Ações</th></tr></thead><tbody id="cfg-list" class="align-top"></tbody></table></div>
+      </div>
+    </section>
+
+    <section id="view-coord" class="hidden fade-in space-y-6">
+      <div class="card rounded-2xl p-6 space-y-4">
+        <div class="flex items-center justify-between flex-wrap gap-3">
+          <h2 class="text-lg font-bold text-slate-100">Visão de Coordenação</h2>
+          <span class="text-xs text-slate-400">Acesso restrito · Sugestões baseadas nas últimas 4 horas (descartando a mais recente)</span>
+        </div>
+        <div class="grid sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-400 mb-1">Pessoa</label>
+            <select id="coord-pessoa" class="w-full pill rounded-lg px-3 py-2 text-sm"></select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-400 mb-1">Agrupamento</label>
+            <select id="coord-agrupamento" class="w-full pill rounded-lg px-3 py-2 text-sm">
+              <option value="day">Total do dia</option>
+              <option value="last6h">Últimas 6 horas</option>
+            </select>
+          </div>
+        </div>
+        <div class="flex justify-end">
+          <button id="coord-btn-carregar" type="button" class="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-4 py-2 rounded-xl shadow-lg shadow-indigo-900/40 transition-all">Atualizar visão</button>
+        </div>
+      </div>
+      <div id="coord-results" class="space-y-6"></div>
+    </section>
+  </div>
+
+  <div id="toast-container"></div>
+
+  <div id="currency-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 p-4">
+    <div class="card w-full max-w-md rounded-2xl p-6 text-slate-200 border border-amber-500/40 bg-slate-900/80">
+      <h3 class="text-lg font-semibold text-amber-300 mb-3">Atenção com a moeda</h3>
+      <p id="currency-modal-message" class="text-sm text-slate-300">
+        A precificação desse site deverá ser feita em Real, portanto, converta os valores para Real antes de fazer a precificação.
+      </p>
+      <div class="mt-6 flex justify-end gap-3">
+        <button id="currency-modal-cancel" type="button" class="pill px-4 py-2 rounded-xl text-sm">Cancelar</button>
+        <button id="currency-modal-accept" type="button" class="bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold px-4 py-2 rounded-xl text-sm">Entendi</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="coord-password-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 p-4">
+    <div class="card w-full max-w-sm rounded-2xl p-6 text-slate-200 border border-indigo-500/40 bg-slate-900/80 space-y-4">
+      <div>
+        <h3 class="text-lg font-semibold text-indigo-300">Área restrita</h3>
+        <p class="text-sm text-slate-300 mt-1">Informe a senha de coordenação para acessar essa aba.</p>
+      </div>
+      <div>
+        <label for="coord-password-input" class="block text-xs uppercase tracking-wide text-slate-400 mb-1">Senha</label>
+        <input id="coord-password-input" type="password" class="w-full pill rounded-lg px-3 py-2 text-sm" autocomplete="off" placeholder="Digite a senha" />
+        <p id="coord-password-error" class="hidden text-xs text-rose-400 mt-2">Senha incorreta. Tente novamente.</p>
+      </div>
+      <div class="flex justify-end gap-3">
+        <button id="coord-password-cancel" class="pill px-4 py-2 rounded-xl text-sm">Cancelar</button>
+        <button id="coord-password-confirm" class="bg-indigo-500 hover:bg-indigo-400 text-white font-semibold px-4 py-2 rounded-xl text-sm">Acessar</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function byId(s){ return document.getElementById(s); }
+    function num(n, d){ if(d===undefined) d=2; return (n==null?0:n).toLocaleString('pt-BR',{minimumFractionDigits:d,maximumFractionDigits:d}); }
+    function pct(n, d){ if(d===undefined) d=1; return num(n,d)+'%'; }
+    function money(n, d){ if(d===undefined) d=2; return '$'+num(n,d); }
+    function escapeHtml(str){ return String(str==null?'':str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+    function sha256Hex(str){
+        if (window.crypto && window.crypto.subtle && window.TextEncoder) {
+            return window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(str)).then(function(buffer){
+                var bytes = Array.from(new Uint8Array(buffer));
+                return bytes.map(function(b){ return b.toString(16).padStart(2, '0'); }).join('');
+            });
+        }
+        return Promise.resolve(fallbackHash(str));
+    }
+
+    function fallbackHash(str){
+        var hash = 0;
+        for (var i = 0; i < str.length; i++) {
+            hash = ((hash << 5) - hash) + str.charCodeAt(i);
+            hash |= 0;
+        }
+        return (hash >>> 0).toString(16).padStart(8, '0');
+    }
+
+    function verifyCoordPassword(value){
+        if (!value) return Promise.resolve(false);
+        return sha256Hex('coord::' + value).then(function(result){
+            if (result === CoordAccess.hash) return true;
+            if (CoordAccess.fallback && result === CoordAccess.fallback) return true;
+            return false;
+        }).catch(function(){ return false; });
+    }
+
+    // REMOVIDO: Funções do SearchableSelect antigo (initSearchableSelect, setSearchableOptions, renderSearchableSelect, setSearchableDisabled)
+
+    var BLOCK_SORT_FIELDS = [
+        { value: 'revenue', label: 'Receita' },
+        { value: 'impressions', label: 'Impressões' },
+        { value: 'clicks', label: 'Cliques' },
+        { value: 'ctr', label: 'CTR' },
+        { value: 'ecpm', label: 'eCPM' },
+        { value: 'requests', label: 'Solicitações' },
+        { value: 'coverage', label: 'Cobertura' },
+        { value: 'cpc', label: 'CPC' },
+        { value: 'page', label: 'Página (A-Z)' }
+    ];
+
+    function getBlockMetricValue(entry, metric){
+        if (metric === 'page') return String(entry && entry.page ? entry.page : '');
+        var metrics = entry && entry.metrics ? entry.metrics : {};
+        var value = Number(metrics[metric]);
+        if (!isFinite(value)) value = 0;
+        return value;
+    }
+
+    function sortBlockEntries(list, state){
+        var metric = state && state.metric ? state.metric : 'revenue';
+        var dir = state && state.dir === 'asc' ? 1 : -1;
+        return (list || []).slice().sort(function(a, b){
+            if (metric === 'page') {
+                var cmp = String(a && a.page ? a.page : '').localeCompare(String(b && b.page ? b.page : ''), 'pt-BR');
+                if (cmp !== 0) return cmp * dir;
+                var fallbackA = getBlockMetricValue(a, 'revenue');
+                var fallbackB = getBlockMetricValue(b, 'revenue');
+                if (fallbackA < fallbackB) return -1;
+                if (fallbackA > fallbackB) return 1;
+                return 0;
+            }
+            var valA = getBlockMetricValue(a, metric);
+            var valB = getBlockMetricValue(b, metric);
+            if (valA < valB) return -1 * dir;
+            if (valA > valB) return 1 * dir;
+            return String(a && a.page ? a.page : '').localeCompare(String(b && b.page ? b.page : ''), 'pt-BR');
+        });
+    }
+
+    function buildBlockSortControls(prefix, state){
+        var options = BLOCK_SORT_FIELDS.map(function(opt){
+            var selected = state && state.metric === opt.value ? ' selected' : '';
+            return '<option value="'+opt.value+'"'+selected+'>'+opt.label+'</option>';
+        }).join('');
+        var dirLabel = state && state.dir === 'asc' ? 'Ordem crescente' : 'Ordem decrescente';
+        return '<div class="flex flex-wrap items-center gap-3 text-sm text-slate-300">'
+            + '<label for="'+prefix+'-sort-field" class="text-xs uppercase tracking-wide text-slate-400">Ordenar blocos por</label>'
+            + '<select id="'+prefix+'-sort-field" class="pill rounded-lg px-3 py-1.5 text-sm">'+options+'</select>'
+            + '<button id="'+prefix+'-sort-dir" type="button" class="pill rounded-lg px-3 py-1.5 text-sm hover:text-white">'+dirLabel+'</button>'
+            + '</div>';
+    }
+
+    var CurrencyModal = { element: null, acceptButton: null, cancelButton: null, onAccept: null };
+
+    function setupCurrencyModal(){
+        CurrencyModal.element = byId('currency-modal');
+        CurrencyModal.acceptButton = byId('currency-modal-accept');
+        CurrencyModal.cancelButton = byId('currency-modal-cancel');
+        if (CurrencyModal.acceptButton) {
+            CurrencyModal.acceptButton.onclick = function(){
+                var cb = CurrencyModal.onAccept;
+                hideCurrencyModal();
+                if (typeof cb === 'function') cb();
+            };
+        }
+        if (CurrencyModal.cancelButton) {
+            CurrencyModal.cancelButton.onclick = hideCurrencyModal;
+        }
+        if (CurrencyModal.element) {
+            CurrencyModal.element.addEventListener('click', function(evt){
+                if (evt.target === CurrencyModal.element) hideCurrencyModal();
+            });
+        }
+    }
+
+    function showCurrencyModal(onAccept){
+        if (!CurrencyModal.element) setupCurrencyModal();
+        CurrencyModal.onAccept = onAccept;
+        if (CurrencyModal.element) CurrencyModal.element.classList.remove('hidden');
+    }
+
+    function hideCurrencyModal(){
+        if (CurrencyModal.element) CurrencyModal.element.classList.add('hidden');
+        CurrencyModal.onAccept = null;
+    }
+
+    function showCoordPasswordModal(onSuccess){
+        CoordAccess.pending = (typeof onSuccess === 'function') ? onSuccess : null;
+        var modal = byId('coord-password-modal');
+        var input = byId('coord-password-input');
+        var error = byId('coord-password-error');
+        if (error) error.classList.add('hidden');
+        if (modal) modal.classList.remove('hidden');
+        if (input) {
+            input.value = '';
+            setTimeout(function(){ input.focus(); }, 50);
+        }
+    }
+
+    function hideCoordPasswordModal(){
+        var modal = byId('coord-password-modal');
+        if (modal) modal.classList.add('hidden');
+        var input = byId('coord-password-input');
+        if (input) input.value = '';
+        var error = byId('coord-password-error');
+        if (error) error.classList.add('hidden');
+        var btn = byId('coord-password-confirm');
+        if (btn) {
+            btn.disabled = false;
+            if (btn.dataset.originalText) btn.textContent = btn.dataset.originalText;
+        }
+        CoordAccess.verifying = false;
+        CoordAccess.pending = null;
+    }
+
+    function setupCoordinationAccess(){
+        var modal = byId('coord-password-modal');
+        if (modal) {
+            modal.addEventListener('click', function(evt){ if (evt.target === modal) hideCoordPasswordModal(); });
+        }
+        var btnConfirm = byId('coord-password-confirm');
+        if (btnConfirm) {
+            btnConfirm.onclick = function(){
+                if (CoordAccess.verifying) return;
+                var input = byId('coord-password-input');
+                var error = byId('coord-password-error');
+                var value = input ? String(input.value || '').trim() : '';
+                if (!value) {
+                    if (error) error.classList.remove('hidden');
+                    if (input) input.focus();
+                    return;
+                }
+                if (error) error.classList.add('hidden');
+                CoordAccess.verifying = true;
+                var original = btnConfirm.dataset.originalText || btnConfirm.textContent;
+                btnConfirm.dataset.originalText = original;
+                btnConfirm.textContent = 'Verificando...';
+                btnConfirm.disabled = true;
+                verifyCoordPassword(value).then(function(valid){
+                    CoordAccess.verifying = false;
+                    btnConfirm.disabled = false;
+                    btnConfirm.textContent = btnConfirm.dataset.originalText || original;
+                    if (valid) {
+                        CoordAccess.granted = true;
+                        var cb = CoordAccess.pending;
+                        hideCoordPasswordModal();
+                        CoordAccess.pending = null;
+                        if (typeof cb === 'function') cb();
+                    } else {
+                        if (error) error.classList.remove('hidden');
+                        if (input) {
+                            input.focus();
+                            input.select();
+                        }
+                    }
+                }).catch(function(){
+                    CoordAccess.verifying = false;
+                    btnConfirm.disabled = false;
+                    btnConfirm.textContent = btnConfirm.dataset.originalText || original;
+                    if (error) error.classList.remove('hidden');
+                    if (input) {
+                        input.focus();
+                        input.select();
+                    }
+                });
+            };
+        }
+        var btnCancel = byId('coord-password-cancel');
+        if (btnCancel) {
+            btnCancel.onclick = function(){ hideCoordPasswordModal(); };
+        }
+        var input = byId('coord-password-input');
+        if (input) {
+            input.addEventListener('keydown', function(evt){
+                if (evt.key === 'Enter') {
+                    evt.preventDefault();
+                    var btn = byId('coord-password-confirm');
+                    if (btn) btn.click();
+                }
+            });
+        }
+        var coordAgr = byId('coord-agrupamento');
+        if (coordAgr) {
+            coordAgr.onchange = function(){ loadCoordinationData(); };
+        }
+        var coordBtn = byId('coord-btn-carregar');
+        if (coordBtn) {
+            coordBtn.onclick = function(){ loadCoordinationData(true); };
+        }
+    }
+
+    function slugifyCoord(value){
+        return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    }
+
+    function setCoordinationLoading(message){
+        var container = byId('coord-results');
+        if (!container) return;
+        container.innerHTML = '<div class="card rounded-2xl p-6 text-slate-200 border border-slate-700/60 bg-slate-900/40">'+escapeHtml(message || 'Carregando...')+'</div>';
+    }
+
+    function loadCoordinationData(forceReload){
+        if (!CoordAccess.granted) return;
+        var pessoaSel = byId('coord-pessoa');
+        var pessoa = pessoaSel ? pessoaSel.value : '';
+        var agrupSel = byId('coord-agrupamento');
+        var agrupamento = agrupSel ? agrupSel.value : 'day';
+        if (!pessoa) {
+            renderCoordination({ operations: [], message: 'Selecione uma pessoa para visualizar os dados.' });
+            return;
+        }
+        if (COORD.loading && !forceReload) return;
+        COORD.loading = true;
+        setCoordinationLoading('Carregando visão de coordenação...');
+        google.script.run
+            .withSuccessHandler(function(res){
+                COORD.loading = false;
+                renderCoordination(res || { operations: [] });
+            })
+            .withFailureHandler(function(err){
+                COORD.loading = false;
+                renderCoordination({ operations: [], error: err && err.message ? err.message : 'Erro ao carregar os dados.' });
+            })
+            .getCoordinationData({ pessoa: pessoa, agrupamento: agrupamento });
+    }
+
+    function updateCoordinationOperation(opName){
+        if (!opName) return;
+        var op = COORD.operationMap[opName];
+        if (!op) return;
+        var container = byId('coord-table-' + slugifyCoord(opName));
+        if (!container) return;
+        container.innerHTML = buildCoordinationTable(op, COORD.cpcTargets[opName]);
+    }
+
+    // MODIFICADO: renderCoordination - removidos os controles de ordenação
+    function renderCoordination(res){
+        var container = byId('coord-results');
+        if (!container) return;
+        if (!CoordAccess.granted) {
+            container.innerHTML = '<div class="card rounded-2xl p-6 text-slate-200 border border-slate-700/60 bg-slate-900/40">Área restrita. Informe a senha para visualizar.</div>';
+            return;
+        }
+        if (res && res.error) {
+            container.innerHTML = '<div class="card rounded-2xl p-6 border border-rose-500/40 bg-rose-900/20 text-rose-100">'+escapeHtml(res.error)+'</div>';
+            return;
+        }
+        var pessoaSel = byId('coord-pessoa');
+        var pessoa = pessoaSel ? pessoaSel.value : '';
+        if (!pessoa || (res && res.message)) {
+            var msg = res && res.message ? res.message : 'Selecione uma pessoa para visualizar os dados.';
+            container.innerHTML = '<div class="card rounded-2xl p-6 text-slate-200 border border-slate-700/60 bg-slate-900/40">'+escapeHtml(msg)+'</div>';
+            return;
+        }
+        COORD.lastResponse = res;
+        var operations = (res && res.operations) ? res.operations.slice() : [];
+        if (!operations.length) {
+            container.innerHTML = '<div class="card rounded-2xl p-6 text-slate-200 border border-slate-700/60 bg-slate-900/40">Nenhuma operação configurada para essa pessoa no período selecionado.</div>';
+            return;
+        }
+        operations.sort(function(a,b){ return String(a.operacao||'').localeCompare(String(b.operacao||''), 'pt-BR'); });
+        COORD.operations = operations;
+        COORD.operationMap = {};
+        var frag = document.createDocumentFragment();
+        operations.forEach(function(op){
+            var opName = op.operacao || 'Operação';
+            COORD.operationMap[opName] = op;
+            var card = document.createElement('div');
+            card.className = 'card rounded-2xl p-6 space-y-4';
+
+            var header = document.createElement('div');
+            header.className = 'flex flex-wrap items-center justify-between gap-3';
+            var title = document.createElement('div');
+            title.className = 'text-lg font-bold text-slate-100';
+            title.textContent = opName;
+            header.appendChild(title);
+
+            var inputWrap = document.createElement('label');
+            inputWrap.className = 'flex items-center gap-2 text-sm text-slate-300';
+            inputWrap.innerHTML = '<span>CPC Alvo</span>';
+            var input = document.createElement('input');
+            input.type = 'number';
+            input.step = '0.01';
+            input.placeholder = '0.00';
+            input.className = 'pill rounded-lg px-3 py-2 text-sm w-28';
+            if (COORD.cpcTargets.hasOwnProperty(opName) && COORD.cpcTargets[opName] !== undefined) {
+                var val = COORD.cpcTargets[opName];
+                input.value = (val === null || val === undefined) ? '' : val;
+            }
+            input.dataset.operation = opName;
+            input.addEventListener('input', function(){
+                var name = this.dataset.operation;
+                if (!name) return;
+                var v = parseFloat(this.value);
+                if (isNaN(v)) {
+                    delete COORD.cpcTargets[name];
+                } else {
+                    COORD.cpcTargets[name] = v;
+                }
+                updateCoordinationOperation(name);
+            });
+            input.addEventListener('blur', function(){ updateCoordinationOperation(this.dataset.operation); });
+            inputWrap.appendChild(input);
+            header.appendChild(inputWrap);
+            card.appendChild(header);
+
+            var subtitle = document.createElement('div');
+            subtitle.className = 'text-sm font-semibold text-slate-300 uppercase tracking-wide';
+            subtitle.textContent = 'Análise de comparação por bloco';
+            card.appendChild(subtitle);
+
+            var tableContainer = document.createElement('div');
+            var slug = slugifyCoord(opName);
+            tableContainer.id = 'coord-table-' + slug;
+            tableContainer.innerHTML = buildCoordinationTable(op, COORD.cpcTargets[opName]);
+            card.appendChild(tableContainer);
+
+            frag.appendChild(card);
+        });
+
+        container.innerHTML = '';
+        // REMOVIDO: Bloco de código que criava os controles de ordenação (buildBlockSortControls, etc.)
+        container.appendChild(frag);
+    }
+
+    function rerenderCoordination(){
+        if (!CoordAccess.granted) return;
+        if (COORD.lastResponse) {
+            renderCoordination(COORD.lastResponse);
+        }
+    }
+
+    function renderCoordinationSuggestionCell(text){
+        if (!text) {
+            return '<div class="text-xs text-slate-400">Sem sugestão disponível</div>';
+        }
+        var parts = String(text).split(' — ');
+        var main = parts.shift() || '';
+        var detail = parts.join(' — ');
+        var palette = {
+            wrapper: 'border border-slate-700/60 bg-slate-800/40',
+            action: 'text-slate-200',
+            detail: 'text-slate-300'
+        };
+        if (/aumentar/i.test(main)) {
+            palette = {
+                wrapper: 'border border-emerald-500/40 bg-emerald-500/10',
+                action: 'text-emerald-200',
+                detail: 'text-emerald-100'
+            };
+        } else if (/reduzir/i.test(main)) {
+            palette = {
+                wrapper: 'border border-rose-500/40 bg-rose-500/10',
+                action: 'text-rose-200',
+                detail: 'text-rose-100'
+            };
+        } else if (/manter/i.test(main)) {
+            palette = {
+                wrapper: 'border border-amber-500/40 bg-amber-500/10',
+                action: 'text-amber-200',
+                detail: 'text-amber-100'
+            };
+        }
+        var html = '<div class="rounded-lg px-3 py-2 '+palette.wrapper+'">'
+            + '<div class="text-sm font-semibold '+palette.action+'">'+escapeHtml(main || text)+'</div>';
+        if (detail) {
+            html += '<div class="text-xs mt-1 leading-snug '+palette.detail+'">'+escapeHtml(detail)+'</div>';
+        }
+        html += '</div>';
+        return html;
+    }
+
+    // MODIFICADO: buildCoordinationTable - cabeçalhos da tabela agora são clicáveis
+    function buildCoordinationTable(op, targetValue){
+        var blocks = (op && op.blocks) ? op.blocks.slice() : [];
+        if (!blocks.length) {
+            return '<div class="card rounded-xl p-4 border border-slate-700/60 bg-slate-900/40 text-sm text-slate-300">Sem dados disponíveis para esta operação nas últimas horas.</div>';
+        }
+        blocks.sort(function(a,b){
+            var pageA = String(a.page||'');
+            var pageB = String(b.page||'');
+            if (pageA !== pageB) return pageA.localeCompare(pageB, 'pt-BR');
+            return String(a.label||'').localeCompare(String(b.label||''), 'pt-BR');
+        });
+        var basisMap = {};
+        blocks.forEach(function(block){
+            basisMap[String(block.page||'')+'||'+String(block.label||'')] = block.suggestionBasis || {};
+        });
+        var target = parseFloat(targetValue);
+        if (!isFinite(target)) target = NaN;
+
+        var grouped = { Quiz: {}, P1: {}, P2: {} };
+        blocks.forEach(function(block){
+            var part = block.parte || '';
+            if (!grouped[part]) grouped[part] = {};
+            var label = block.label || '-';
+            if (!grouped[part][label]) grouped[part][label] = [];
+            var metrics = block.metrics || {};
+            grouped[part][label].push({
+                page: block.page || '-',
+                metrics: metrics,
+                suggestion: getCoordinationSuggestion(block, target, basisMap)
+            });
+        });
+
+        function tableFor(list){
+            if (!list || !list.length) return '';
+            var sorted = sortBlockEntries(list, COORD_BLOCK_SORT);
+            var rows = sorted.map(function(item){
+                var metrics = item.metrics || {};
+                return '<tr class="border-t border-slate-700/60 hover:bg-slate-800/50">'
+                    + '<td class="py-2 px-2 text-slate-300">'+escapeHtml(item.page || '-')+'</td>'
+                    + '<td class="py-2 px-2 text-right">'+money(metrics.revenue || 0)+'</td>'
+                    + '<td class="py-2 px-2 text-right">'+num(metrics.impressions || 0, 0)+'</td>'
+                    + '<td class="py-2 px-2 text-right">'+num(metrics.clicks || 0, 0)+'</td>'
+                    + '<td class="py-2 px-2 text-right">'+pct(metrics.ctr || 0, 2)+'</td>'
+                    + '<td class="py-2 px-2 text-right">'+money(metrics.ecpm || 0)+'</td>'
+                    + '<td class="py-2 px-2 text-right">'+num(metrics.requests || 0, 0)+'</td>'
+                    + '<td class="py-2 px-2 text-right">'+pct(metrics.coverage || 0, 2)+'</td>'
+                    + '<td class="py-2 px-2 text-right">'+money(metrics.cpc || 0, 3)+'</td>'
+                    + '<td class="py-2 px-2 align-top">'+renderCoordinationSuggestionCell(item.suggestion)+'</td>'
+                    + '</tr>';
+            }).join('');
+            var head = '<thead class="text-slate-400"><tr>'
+                + '<th class="text-left py-2 px-2 cursor-pointer" onclick="sortByCoordBlockHeader(\'page\')">Página'+coordBlockSortIndicator('page')+'</th>'
+                + '<th class="text-right py-2 px-2 cursor-pointer" onclick="sortByCoordBlockHeader(\'revenue\')">Receita'+coordBlockSortIndicator('revenue')+'</th>'
+                + '<th class="text-right py-2 px-2 cursor-pointer" onclick="sortByCoordBlockHeader(\'impressions\')">Impressões'+coordBlockSortIndicator('impressions')+'</th>'
+                + '<th class="text-right py-2 px-2 cursor-pointer" onclick="sortByCoordBlockHeader(\'clicks\')">Cliques'+coordBlockSortIndicator('clicks')+'</th>'
+                + '<th class="text-right py-2 px-2 cursor-pointer" onclick="sortByCoordBlockHeader(\'ctr\')">CTR'+coordBlockSortIndicator('ctr')+'</th>'
+                + '<th class="text-right py-2 px-2 cursor-pointer" onclick="sortByCoordBlockHeader(\'ecpm\')">eCPM'+coordBlockSortIndicator('ecpm')+'</th>'
+                + '<th class="text-right py-2 px-2 cursor-pointer" onclick="sortByCoordBlockHeader(\'requests\')">Solicitações'+coordBlockSortIndicator('requests')+'</th>'
+                + '<th class="text-right py-2 px-2 cursor-pointer" onclick="sortByCoordBlockHeader(\'coverage\')">Cobertura'+coordBlockSortIndicator('coverage')+'</th>'
+                + '<th class="text-right py-2 px-2 cursor-pointer" onclick="sortByCoordBlockHeader(\'cpc\')">CPC'+coordBlockSortIndicator('cpc')+'</th>'
+                + '<th class="text-left py-2 px-2">Sugestão de precificação</th>'
+                + '</tr></thead>';
+            return '<div class="overflow-auto"><table class="w-full text-sm">'+head+'<tbody>'+rows+'</tbody></table></div>';
+        }
+
+        function sectionHtml(partKey, title, borderClass, textClass){
+            var partGroups = grouped[partKey] || {};
+            var labelsInOrder = [];
+            if (partKey === 'Quiz') labelsInOrder = ['rewarded (Quiz)'];
+            if (partKey === 'P1') labelsInOrder = ['mob_top (P1)', 'mob_interstitial (P1)'];
+            if (partKey === 'P2') labelsInOrder = ['mob_top (P2)', 'mob_offerwall (P2)'];
+            var seen = {};
+            var innerHtml = '';
+            labelsInOrder.forEach(function(label){
+                if (partGroups[label] && partGroups[label].length) {
+                    innerHtml += '<div class="p-3 rounded-lg border border-slate-700 bg-slate-800/30">'
+                        + '<h5 class="font-semibold text-sm mb-2 text-slate-200">'+escapeHtml(label)+'</h5>'
+                        + tableFor(partGroups[label])
+                        + '</div>';
+                    seen[label] = true;
+                }
+            });
+            Object.keys(partGroups).sort(function(a,b){ return a.localeCompare(b, 'pt-BR'); }).forEach(function(label){
+                if (seen[label]) return;
+                innerHtml += '<div class="p-3 rounded-lg border border-slate-700 bg-slate-800/30">'
+                    + '<h5 class="font-semibold text-sm mb-2 text-slate-200">'+escapeHtml(label)+'</h5>'
+                    + tableFor(partGroups[label])
+                    + '</div>';
+            });
+            if (!innerHtml) return '';
+            return '<div class="card rounded-xl p-4 '+borderClass+'"><h4 class="text-base font-bold mb-3 '+textClass+'">'+title+'</h4><div class="space-y-4">'+innerHtml+'</div></div>';
+        }
+
+        var quizSection = sectionHtml('Quiz', 'Análise Quiz', 'border border-emerald-700 bg-emerald-900/10', 'text-emerald-300');
+        var p1Section = sectionHtml('P1', 'Análise P1', 'border border-blue-700 bg-blue-900/10', 'text-blue-300');
+        var p2Section = sectionHtml('P2', 'Análise P2', 'border border-teal-700 bg-teal-900/10', 'text-teal-300');
+
+        var content = '';
+        var anySection = false;
+        [quizSection, p1Section, p2Section].forEach(function(section){
+            if (section) {
+                content += section;
+                anySection = true;
+            }
+        });
+
+        if (!anySection) {
+            content += '<div class="card rounded-xl p-4 border border-slate-700/60 bg-slate-900/40 text-sm text-slate-300">Sem dados disponíveis para os blocos analisados.</div>';
+        }
+
+        return '<div class="card rounded-2xl p-5 space-y-6 bg-slate-900/40 border border-slate-700/60">'+content+'</div>';
+    }
+
+    function getCoordinationSuggestion(block, target, basisMap){
+        var label = String(block && block.label ? block.label : '');
+        var parte = String(block && block.parte ? block.parte : '');
+        var basis = block && block.suggestionBasis ? block.suggestionBasis : {};
+        if (!basis.hasData) {
+            return 'Sem dados recentes para sugerir ajuste';
+        }
+        var coverage = Number(basis.coverage || 0);
+        var cpc = Number(basis.cpc || 0);
+        var suggestion = '';
+        var reason = '';
+
+        function money3(val){ return money(val || 0, 3); }
+
+        if (parte === 'P1') {
+            var thresholds = label.toLowerCase().includes('interstitial') ? { high: 95, low: 80 } : { high: 80, low: 30 };
+            if (coverage > thresholds.high) {
+                suggestion = 'Aumentar a regra';
+                reason = 'Cobertura acima de '+thresholds.high+'%';
+            } else if (coverage < thresholds.low) {
+                suggestion = 'Reduzir a regra';
+                reason = 'Cobertura abaixo de '+thresholds.low+'%';
+            } else {
+                if (!isFinite(target) || target <= 0) {
+                    return 'Informe o CPC alvo para gerar uma sugestão';
+                }
+                if (cpc < target) {
+                    suggestion = 'Aumentar a regra';
+                    reason = 'CPC ('+money3(cpc)+') abaixo do alvo ('+money3(target)+')';
+                } else {
+                    suggestion = 'Manter a regra';
+                    reason = 'CPC ('+money3(cpc)+') dentro ou acima do alvo';
+                }
+            }
+        } else if (parte === 'P2' && label.toLowerCase().includes('mob_top')) {
+            if (coverage > 80) {
+                suggestion = 'Aumentar a regra';
+                reason = 'Cobertura acima de 80%';
+            } else if (coverage < 70) {
+                suggestion = 'Reduzir a regra';
+                reason = 'Cobertura abaixo de 70%';
+            } else {
+                suggestion = 'Manter a regra';
+                reason = 'Cobertura entre 70% e 80%';
+            }
+        } else if (parte === 'P2' && label.toLowerCase().includes('offerwall')) {
+            var ref = basisMap[String(block.page||'')+'||mob_top (P2)'];
+            if (!ref || !ref.hasData) {
+                return 'Sem referência do bloco mob_top (P2) para comparar';
+            }
+            var corr = Number(basis.cpcCorrigido || 0);
+            var refCpc = Number(ref.cpc || 0);
+            if (!(corr > 0)) {
+                return 'Sem dados de CPC corrigido suficientes';
+            }
+            if (corr < refCpc) {
+                suggestion = 'Aumentar a regra';
+                reason = 'CPC Corrigido ('+money3(corr)+') abaixo do mob_top P2 ('+money3(refCpc)+')';
+            } else {
+                suggestion = 'Manter a regra';
+                reason = 'CPC Corrigido maior ou igual ao mob_top P2';
+            }
+        } else if (parte === 'Quiz' && label.toLowerCase().includes('rewarded')) {
+            suggestion = 'Ajustar regra para CPC = CPA';
+            reason = 'Revisar valor de CPA antes de precificar';
+        }
+
+        if (!suggestion) return 'Sem sugestão disponível';
+        return suggestion + ' — ' + reason;
+    }
+
+    function getPricingSortState(network){
+        if(!PRICING_SORT[network]){
+            PRICING_SORT[network] = { by: 'urlPath', dir: 'asc', lastBlockId: null };
+        }
+        return PRICING_SORT[network];
+    }
+
+    function ensureTwoDecimals(value){
+        if (value === null || value === undefined) return '';
+        var normalized = String(value).trim();
+        if (!normalized) return '';
+        normalized = normalized.replace(/,/g,'.');
+        var num = parseFloat(normalized);
+        if (isNaN(num)) return '';
+        return num.toFixed(2);
+    }
+
+    function extractUtmSource(canal){
+        if(!canal) return '';
+        var normalized = String(canal).replace(/;/g,'&');
+        var match = normalized.match(/utm_source=([^&]+)/i);
+        if(match) return decodeURIComponent(match[1].replace(/\+/g,' '));
+        if(normalized.indexOf('=') === -1) return normalized;
+        var parts = normalized.split('=');
+        return decodeURIComponent(parts.pop().replace(/\+/g,' '));
+    }
+
+    function parseDomainAndPath(rawUrl){
+        if(!rawUrl) return { domain: '', path: '' };
+        var input = String(rawUrl).trim();
+        if(!/^https?:\/\//i.test(input)) input = 'https://' + input;
+        try {
+            var parsed = new URL(input);
+            var path = parsed.pathname.replace(/^\/+/, '').replace(/\/+$/, '');
+            return { domain: parsed.hostname.toLowerCase(), path: path };
+        } catch(err) {
+            var parts = String(rawUrl).split('/');
+            var domain = parts.shift() || '';
+            return { domain: domain.toLowerCase(), path: parts.join('/').replace(/^\/+/, '').replace(/\/+$/, '') };
+        }
+    }
+
+    var CFG = { rows: [], pessoas: [], opsByPessoa: {}, paginasByOp: {} };
+    var LAST_RES = null;
+    var SORT = { by: 'revenue', dir: 'desc' };
+    var PRICING_SORT = {};
+    var BLOCK_SORT = { metric: 'revenue', dir: 'desc' };
+    var COORD_BLOCK_SORT = { metric: 'revenue', dir: 'desc' };
+    var PQ = { options: [], selected: [], open:false, searchTerm: '' };
+    // ADICIONADO: Novos estados para filtros de Pessoa e Operação
+    var FILTRO_PESSOA = { options: [], selected: '', open: false, searchTerm: '', placeholder: '— selecione —' };
+    var FILTRO_OPERACAO = { options: [], selected: '', open: false, searchTerm: '', placeholder: '— selecione —', disabled: true };
+    var CHART = { inst: null };
+    var COORD = { operations: [], operationMap: {}, cpcTargets: {}, loading: false, lastResponse: null };
+    var CoordAccess = { granted: false, hash: '87402fdebedf4d5bf24d2f80aca3ae0197e8837d16a9c0155f366343c1f6a4bf', fallback: 'b10d26f7', pending: null, verifying: false };
+    var SYNC_TIMERS = {};
+
+    function showToast(message, type = 'info') {
+        const container = byId('toast-container');
+        if (!container) return;
+        const toast = document.createElement('div');
+        let typeClass = 'toast-info';
+        if (type === 'success') typeClass = 'toast-success';
+        if (type === 'error') typeClass = 'toast-error';
+        
+        toast.className = `toast ${typeClass}`;
+        toast.innerHTML = `<div style="white-space: pre-wrap;">${message}</div>`;
+        container.appendChild(toast);
+        
+        setTimeout(() => {
+            toast.classList.add('toast-out');
+            toast.addEventListener('animationend', () => toast.remove());
+        }, 7000);
+    }
+
+    (function(){
+      var tabMap = {
+        dash: { button: byId('tab-dash'), view: byId('view-dash') },
+        conf: { button: byId('tab-conf'), view: byId('view-conf') },
+        coord: { button: byId('tab-coord'), view: byId('view-coord') }
+      };
+
+      function setActiveTab(tab){
+        if (tab === 'coord' && !CoordAccess.granted) {
+          showCoordPasswordModal(function(){ setActiveTab('coord'); });
+          return;
+        }
+        Object.keys(tabMap).forEach(function(key){
+          var cfg = tabMap[key];
+          if (!cfg.button || !cfg.view) return;
+          var isActive = (key === tab);
+          cfg.view.classList.toggle('hidden', !isActive);
+          cfg.button.classList.toggle('bg-blue-600', isActive);
+          cfg.button.classList.toggle('text-white', isActive);
+          if (!isActive) {
+            cfg.button.classList.remove('bg-blue-600','text-white');
+          }
+        });
+        if (tab === 'coord') {
+          loadCoordinationData();
+        }
+      }
+
+      Object.keys(tabMap).forEach(function(key){
+        var cfg = tabMap[key];
+        if (!cfg.button) return;
+        cfg.button.onclick = function(){ setActiveTab(key); };
+      });
+
+      setActiveTab('dash');
+      setupCoordinationAccess();
+
+      var subAna = byId('sub-ana');
+      var subComp = byId('sub-comp');
+      if (subAna && subComp) {
+        subAna.onclick = function(){ byId('analysis-content').classList.remove('hidden'); byId('compare-content').classList.add('hidden'); this.classList.add('bg-teal-600','text-white'); subComp.classList.remove('bg-teal-600','text-white'); };
+        subComp.onclick = function(){ byId('compare-content').classList.remove('hidden'); byId('analysis-content').classList.add('hidden'); this.classList.add('bg-teal-600','text-white'); subAna.classList.remove('bg-teal-600','text-white'); };
+      }
+    })();
+
+    function loadConfig(){ google.script.run.withSuccessHandler(function(res){ CFG = res || {}; fillPessoa(res.pessoas || []); renderCfgTable(res.rows || []); }).getConfig(); }
+
+    // MODIFICADO: fillPessoa reescrito para usar os novos componentes de filtro
+    function fillPessoa(list){
+      // Update Pessoa options
+      FILTRO_PESSOA.options = (list || []).slice();
+      if (FILTRO_PESSOA.selected && !FILTRO_PESSOA.options.includes(FILTRO_PESSOA.selected)) {
+          FILTRO_PESSOA.selected = '';
+      }
+      updateCustomSelectSummary('f-pessoa', FILTRO_PESSOA);
+
+      function applyOperacoes(pessoa){
+        var ops = (CFG.opsByPessoa && pessoa) ? (CFG.opsByPessoa[pessoa] || []) : [];
+        FILTRO_OPERACAO.options = (ops || []).slice();
+        if (FILTRO_OPERACAO.selected && !FILTRO_OPERACAO.options.includes(FILTRO_OPERACAO.selected)) {
+            FILTRO_OPERACAO.selected = '';
+        }
+        setCustomSelectDisabled('f-operacao', FILTRO_OPERACAO, !ops.length);
+        updateCustomSelectSummary('f-operacao', FILTRO_OPERACAO);
+        if (!ops.length) FILTRO_OPERACAO.selected = '';
+      }
+
+      applyOperacoes(FILTRO_PESSOA.selected);
+
+      var coordSel = byId('coord-pessoa');
+      if (coordSel) {
+        var previous = coordSel.value;
+        coordSel.innerHTML = '<option value="">— selecione —</option>' + (list||[]).map(function(p){return '<option>'+escapeHtml(p)+'</option>';}).join('');
+        if (previous && list && list.indexOf(previous) >= 0) coordSel.value = previous;
+        coordSel.onchange = function(){ loadCoordinationData(); };
+      }
+    }
+    
+    // --- ADICIONADO: Novas funções para filtros de Pessoa e Operação ---
+    
+    function positionCustomSelectPanel(panel, toggle) {
+      if (!panel || !toggle || panel.classList.contains('hidden')) return;
+      var rect = toggle.getBoundingClientRect();
+      var desiredWidth = Math.max(rect.width, 260);
+      panel.style.minWidth = desiredWidth + 'px';
+      panel.style.maxWidth = '420px';
+      panel.style.width = Math.min(desiredWidth, 420) + 'px';
+      var panelWidth = panel.offsetWidth || Math.min(desiredWidth, 420);
+      var left = rect.left;
+      var viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+      if (left + panelWidth > viewportWidth - 16) {
+        left = Math.max(16, viewportWidth - panelWidth - 16);
+      }
+      panel.style.left = left + 'px';
+      var viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+      var panelHeight = panel.offsetHeight;
+      var top = rect.bottom + 6;
+      if (panelHeight && (top + panelHeight > viewportHeight - 16)) {
+        if ((rect.top - 6) - panelHeight >= 16) {
+          top = rect.top - panelHeight - 6;
+        } else {
+          top = Math.max(16, viewportHeight - panelHeight - 16);
+        }
+      }
+      if (top < 16) top = 16;
+      panel.style.top = top + 'px';
+    }
+
+    function wireCustomSelect(idPrefix, model, onSelectCallback) {
+      var toggle = byId(idPrefix + '-toggle');
+      var panel = byId(idPrefix + '-panel');
+      
+      if (panel && !panel.dataset.floating) {
+        panel.dataset.floating = 'true';
+        panel.classList.add('hidden');
+        panel.style.position = 'fixed';
+        panel.style.maxHeight = '320px';
+        panel.style.overflowY = 'auto';
+        panel.style.zIndex = 70;
+        document.body.appendChild(panel);
+        panel.addEventListener('click', function(evt){ evt.stopPropagation(); });
+      }
+
+      function closePanel() {
+        model.open = false;
+        if (panel) panel.classList.add('hidden');
+      }
+
+      function openPanel() {
+        if (model.disabled) return;
+        // Fechar outros painéis abertos
+        if (FILTRO_PESSOA.open && idPrefix !== 'f-pessoa') { FILTRO_PESSOA.open = false; byId('f-pessoa-panel').classList.add('hidden'); }
+        if (FILTRO_OPERACAO.open && idPrefix !== 'f-operacao') { FILTRO_OPERACAO.open = false; byId('f-operacao-panel').classList.add('hidden'); }
+        if (PQ.open && idPrefix !== 'pq') { PQ.open = false; byId('pq-panel').classList.add('hidden'); }
+
+        model.open = true;
+        renderCustomSelectOptions(idPrefix, model, function(value) {
+          closePanel();
+          if (onSelectCallback) onSelectCallback(value);
+        });
+        panel = byId(idPrefix + '-panel');
+        if (!panel) return;
+        panel.style.visibility = 'hidden';
+        panel.classList.remove('hidden');
+        positionCustomSelectPanel(panel, toggle);
+        panel.style.visibility = '';
+        var search = panel.querySelector('#' + idPrefix + '-search');
+        if (search) {
+          search.focus();
+          var len = search.value.length;
+          try { search.setSelectionRange(len, len); } catch(err) {}
+        }
+      }
+      
+      if (toggle) {
+        toggle.addEventListener('click', function(evt){
+          evt.stopPropagation();
+          if (model.open) closePanel();
+          else openPanel();
+        });
+      }
+
+      document.addEventListener('click', function(evt){
+        if (!model.open) return;
+        var tgl = byId(idPrefix + '-toggle');
+        var pnl = byId(idPrefix + '-panel');
+        if ((tgl && tgl.contains(evt.target)) || (pnl && pnl.contains(evt.target))) return;
+        closePanel();
+      });
+
+      window.addEventListener('resize', function(){ if (model.open) positionCustomSelectPanel(panel, toggle); });
+      window.addEventListener('scroll', function(){ if (model.open) positionCustomSelectPanel(panel, toggle); }, true);
+    }
+
+    function updateCustomSelectSummary(idPrefix, model) {
+      var summaryEl = byId(idPrefix + '-summary');
+      if (!summaryEl) return;
+      if (model.selected) {
+        summaryEl.textContent = model.selected;
+        summaryEl.classList.remove('text-slate-400');
+      } else {
+        summaryEl.textContent = model.placeholder || '— selecione —';
+        summaryEl.classList.add('text-slate-400');
+      }
+    }
+    
+    function setCustomSelectDisabled(idPrefix, model, disabled) {
+        model.disabled = !!disabled;
+        var toggle = byId(idPrefix + '-toggle');
+        if (toggle) toggle.disabled = !!disabled;
+    }
+
+    function getVisibleCustomSelectOptions(model) {
+      var normalized = (model.searchTerm || '').toLowerCase();
+      return model.options.filter(function(opt){
+        return !normalized || String(opt).toLowerCase().includes(normalized);
+      });
+    }
+
+    function renderCustomSelectOptions(idPrefix, model, onSelect) {
+      var panel = byId(idPrefix + '-panel');
+      if (!panel) return;
+
+      var activeSearch = model.searchTerm || '';
+      panel.innerHTML = `
+          <input id="${idPrefix}-search" type="text" class="pill w-full px-3 py-2 mb-2 text-sm" placeholder="Pesquisar...">
+          <div id="${idPrefix}-options-list" class="flex-grow overflow-auto space-y-1 max-h-72 pr-1"></div>
+          <div class="flex justify-end mt-2 pt-2 border-t border-slate-700/60 text-xs text-slate-400">
+            <button id="${idPrefix}-clear-all" type="button" class="underline hover:text-rose-400">Limpar seleção</button>
+          </div>`;
+
+      var searchInput = panel.querySelector('#' + idPrefix + '-search');
+      searchInput.value = activeSearch;
+      searchInput.oninput = function(){ 
+        model.searchTerm = this.value;
+        updateCustomSelectOptionsList(idPrefix, model, onSelect);
+      };
+
+      panel.querySelector('#' + idPrefix + '-clear-all').onclick = function(){
+        model.selected = '';
+        model.searchTerm = '';
+        updateCustomSelectSummary(idPrefix, model);
+        updateCustomSelectOptionsList(idPrefix, model, onSelect);
+        if (onSelect) onSelect(''); // Fire callback with empty value
+        var tgl = byId(idPrefix + '-toggle');
+        var pnl = byId(idPrefix + '-panel');
+        positionCustomSelectPanel(pnl, tgl);
+      };
+
+      updateCustomSelectOptionsList(idPrefix, model, onSelect);
+      var tgl = byId(idPrefix + '-toggle');
+      positionCustomSelectPanel(panel, tgl);
+    }
+
+    function updateCustomSelectOptionsList(idPrefix, model, onSelect) {
+      var listContainer = byId(idPrefix + '-options-list');
+      if (!listContainer) return;
+
+      var searchInput = byId(idPrefix + '-search');
+      if (searchInput && model.searchTerm !== searchInput.value) {
+          searchInput.value = model.searchTerm;
+      }
+
+      var visibleOptions = getVisibleCustomSelectOptions(model);
+
+      listContainer.innerHTML = visibleOptions.map(function(opt){
+        var isSelected = (model.selected === opt);
+        return '<button type="button" data-value="'+escapeHtml(opt)+'" class="w-full text-left text-sm p-1.5 rounded-md hover:bg-slate-700/50 cursor-pointer '+(isSelected ? 'font-bold text-sky-400' : 'text-slate-300')+'">'+escapeHtml(opt)+'</button>';
+      }).join('');
+
+      listContainer.querySelectorAll('button').forEach(function(btn){
+        btn.onclick = function(){
+          var v = this.dataset.value;
+          model.selected = v;
+          updateCustomSelectSummary(idPrefix, model);
+          if (onSelect) onSelect(v);
+        };
+      });
+      
+      var tgl = byId(idPrefix + '-toggle');
+      var pnl = byId(idPrefix + '-panel');
+      positionCustomSelectPanel(pnl, tgl);
+    }
+    // --- FIM: Novas funções de filtro ---
+
+    function positionPQPanel(){
+      var panel = byId('pq-panel');
+      var toggle = byId('pq-toggle');
+      if (!panel || !toggle || panel.classList.contains('hidden')) return;
+      var rect = toggle.getBoundingClientRect();
+      var desiredWidth = Math.max(rect.width, 260);
+      panel.style.minWidth = desiredWidth + 'px';
+      panel.style.maxWidth = '420px';
+      panel.style.width = Math.min(desiredWidth, 420) + 'px';
+      var panelWidth = panel.offsetWidth || Math.min(desiredWidth, 420);
+      var left = rect.left;
+      var viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+      if (left + panelWidth > viewportWidth - 16) {
+        left = Math.max(16, viewportWidth - panelWidth - 16);
+      }
+      panel.style.left = left + 'px';
+      var viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+      var panelHeight = panel.offsetHeight;
+      var top = rect.bottom + 6;
+      if (panelHeight && (top + panelHeight > viewportHeight - 16)) {
+        if ((rect.top - 6) - panelHeight >= 16) {
+          top = rect.top - panelHeight - 6;
+        } else {
+          top = Math.max(16, viewportHeight - panelHeight - 16);
+        }
+      }
+      if (top < 16) top = 16;
+      panel.style.top = top + 'px';
+    }
+
+    function wirePQ(){
+      var toggle = byId('pq-toggle');
+      var panel = byId('pq-panel');
+      if (panel && !panel.dataset.floating) {
+        panel.dataset.floating = 'true';
+        panel.classList.add('hidden');
+        panel.style.position = 'fixed';
+        panel.style.maxHeight = '320px';
+        panel.style.overflowY = 'auto';
+        panel.style.zIndex = 70;
+        document.body.appendChild(panel);
+        panel.addEventListener('click', function(evt){ evt.stopPropagation(); });
+      }
+
+      function closePanel(){
+        PQ.open = false;
+        if (panel) panel.classList.add('hidden');
+      }
+
+      function openPanel(){
+        // Fechar outros painéis abertos
+        if (FILTRO_PESSOA.open) { FILTRO_PESSOA.open = false; byId('f-pessoa-panel').classList.add('hidden'); }
+        if (FILTRO_OPERACAO.open) { FILTRO_OPERACAO.open = false; byId('f-operacao-panel').classList.add('hidden'); }
+        
+        PQ.open = true;
+        renderPQOptions();
+        panel = byId('pq-panel');
+        if (!panel) return;
+        panel.style.visibility = 'hidden';
+        panel.classList.remove('hidden');
+        positionPQPanel();
+        panel.style.visibility = '';
+        var search = panel.querySelector('#pq-search');
+        if (search) {
+          search.focus();
+          var len = search.value.length;
+          try { search.setSelectionRange(len, len); } catch(err) {}
+        }
+      }
+
+      if (toggle) {
+        toggle.addEventListener('click', function(evt){
+          evt.stopPropagation();
+          if (PQ.open) closePanel();
+          else openPanel();
+        });
+      }
+
+      document.addEventListener('click', function(evt){
+        // Fechar painéis de filtro se clicar fora
+        var tgl, pnl;
+        if (PQ.open) {
+            tgl = byId('pq-toggle');
+            pnl = byId('pq-panel');
+            if (!((tgl && tgl.contains(evt.target)) || (pnl && pnl.contains(evt.target)))) closePanel();
+        }
+        if (FILTRO_PESSOA.open) {
+            tgl = byId('f-pessoa-toggle');
+            pnl = byId('f-pessoa-panel');
+            if (!((tgl && tgl.contains(evt.target)) || (pnl && pnl.contains(evt.target)))) {
+                FILTRO_PESSOA.open = false;
+                if (pnl) pnl.classList.add('hidden');
+            }
+        }
+        if (FILTRO_OPERACAO.open) {
+            tgl = byId('f-operacao-toggle');
+            pnl = byId('f-operacao-panel');
+            if (!((tgl && tgl.contains(evt.target)) || (pnl && pnl.contains(evt.target)))) {
+                FILTRO_OPERACAO.open = false;
+                if (pnl) pnl.classList.add('hidden');
+            }
+        }
+      });
+
+      window.addEventListener('resize', function(){ if (PQ.open) positionPQPanel(); });
+      window.addEventListener('scroll', function(){ if (PQ.open) positionPQPanel(); }, true);
+    }
+    function resetPQ(){ setPQOptions([]); }
+    function setPQOptions(arr){
+      PQ.options = (arr||[]).slice();
+      PQ.selected = [];
+      PQ.searchTerm = '';
+      updatePQSummary();
+      var search = byId('pq-search');
+      if (search) search.value = '';
+      if (byId('pq-options-list')) updatePQOptionsList('');
+    }
+    function updatePQSummary(){ var len=PQ.selected.length; var sum = len===0 ? '— selecione —' : (len===1 ? PQ.selected[0] : PQ.selected.slice(0,2).join(', ')+(len>2?' +'+(len-2):'')); byId('pq-summary').textContent = sum; }
+    
+    function getVisiblePQOptions(term){
+      var normalized = (term || '').toLowerCase();
+      return PQ.options.filter(function(opt){
+        return !normalized || String(opt).toLowerCase().includes(normalized);
+      });
+    }
+
+    function renderPQOptions(){
+      var panel = byId('pq-panel');
+      if (!panel) return;
+
+      var activeSearch = PQ.searchTerm || '';
+      panel.innerHTML = `
+          <input id="pq-search" type="text" class="pill w-full px-3 py-2 mb-2 text-sm" placeholder="Pesquisar páginas...">
+          <div id="pq-options-list" class="flex-grow overflow-auto space-y-1 max-h-72 pr-1"></div>
+          <div class="flex justify-between mt-2 pt-2 border-t border-slate-700/60 text-xs text-slate-400">
+            <div class="flex gap-3">
+              <button id="pq-all" type="button" class="underline hover:text-white">Selecionar visíveis</button>
+              <button id="pq-none" type="button" class="underline hover:text-white">Limpar visíveis</button>
+            </div>
+            <button id="pq-clear-all" type="button" class="underline hover:text-rose-400">Limpar tudo</button>
+          </div>`;
+
+      var searchInput = panel.querySelector('#pq-search');
+      searchInput.value = activeSearch;
+      searchInput.oninput = function(){ updatePQOptionsList(this.value); };
+
+      panel.querySelector('#pq-all').onclick = function(){
+        var visibleOptions = getVisiblePQOptions(PQ.searchTerm);
+        visibleOptions.forEach(function(opt){ if (!PQ.selected.includes(opt)) PQ.selected.push(opt); });
+        updatePQOptionsList(PQ.searchTerm);
+        updatePQSummary();
+      };
+      panel.querySelector('#pq-none').onclick = function(){
+        var visibleOptions = getVisiblePQOptions(PQ.searchTerm);
+        PQ.selected = PQ.selected.filter(function(sel){ return !visibleOptions.includes(sel); });
+        updatePQOptionsList(PQ.searchTerm);
+        updatePQSummary();
+      };
+      panel.querySelector('#pq-clear-all').onclick = function(){
+        PQ.selected = [];
+        updatePQOptionsList('');
+        updatePQSummary();
+      };
+
+      updatePQOptionsList(activeSearch);
+      positionPQPanel();
+    }
+
+    function updatePQOptionsList(filterValue) {
+      var listContainer = byId('pq-options-list');
+      if (!listContainer) return;
+
+      if (typeof filterValue === 'string') {
+        PQ.searchTerm = filterValue;
+      } else {
+        var searchInput = byId('pq-search');
+        PQ.searchTerm = searchInput ? searchInput.value : (PQ.searchTerm || '');
+      }
+
+      var searchInput = byId('pq-search');
+      if (searchInput && searchInput.value !== PQ.searchTerm) {
+        searchInput.value = PQ.searchTerm;
+      }
+
+      var visibleOptions = getVisiblePQOptions(PQ.searchTerm);
+
+      listContainer.innerHTML = visibleOptions.map(function(pg){
+        var checked = PQ.selected.includes(pg) ? 'checked' : '';
+        return '<label class="flex items-center gap-2 text-sm p-1.5 rounded-md hover:bg-slate-700/50 cursor-pointer"><input type="checkbox" value="'+pg+'" '+checked+'> <span>'+pg+'</span></label>';
+      }).join('');
+
+      listContainer.querySelectorAll('input[type=checkbox]').forEach(function(cb){
+        cb.onchange = function(){
+          var v = this.value;
+          var idx = PQ.selected.indexOf(v);
+          if(this.checked && idx === -1) PQ.selected.push(v);
+          else if (!this.checked && idx !== -1) PQ.selected.splice(idx, 1);
+          updatePQSummary();
+        };
+      });
+
+      updatePQSummary();
+      positionPQPanel();
+    }
+
+    // MODIFICADO: wireFilters atualizado para ler dos novos estados de filtro
+    function wireFilters(){
+      byId('btn-aplicar').onclick = function(){
+        var params = { 
+          pessoa: FILTRO_PESSOA.selected,
+          operacao: FILTRO_OPERACAO.selected,
+          paginasSelecionadas: PQ.selected.slice(),
+          startDate: byId('f-start').value || '', 
+          endDate: byId('f-end').value || '', 
+          granularity: byId('f-gran').value || 'hour' 
+        };
+        if (!params.pessoa || !params.operacao || !params.paginasSelecionadas.length) { 
+            showToast('Selecione Pessoa, Operação e pelo menos uma Página de Queda.', 'error'); 
+            return; 
+        }
+        google.script.run.withSuccessHandler(renderDashboard).getDashboardData(params);
+      };
+    }
+
+    function toggleSort(k) {
+        if (SORT.by === k) { SORT.dir = (k === 'hour') ? 'asc' : ((SORT.dir === 'asc') ? 'desc' : 'asc'); } 
+        else { SORT.by = k; SORT.dir = (k === 'adunit' || k === 'hour') ? 'asc' : 'desc'; }
+        if (LAST_RES) renderDashboard(LAST_RES);
+    }
+    window.sortByHeader = function(k){ toggleSort(k); };
+    function sortIndicator(k){ if (SORT.by !== k) return ''; return SORT.dir === 'asc' ? ' ▲' : ' ▼'; }
+    
+    // --- ADICIONADO: Funções de ordenação para as tabelas de Bloco (Comparativo) ---
+    function toggleBlockSort(k) {
+        if (BLOCK_SORT.metric === k) {
+            BLOCK_SORT.dir = (BLOCK_SORT.dir === 'asc') ? 'desc' : 'asc';
+        } else {
+            BLOCK_SORT.metric = k;
+            BLOCK_SORT.dir = (k === 'page') ? 'asc' : 'desc'; // 'page' defaults to asc, others to desc
+        }
+        if (LAST_RES) renderDashboard(LAST_RES);
+    }
+    window.sortByBlockHeader = function(k){ toggleBlockSort(k); }; // Expor para o HTML
+    function blockSortIndicator(k){ if (BLOCK_SORT.metric !== k) return ''; return BLOCK_SORT.dir === 'asc' ? ' ▲' : ' ▼'; }
+    // --- FIM: Funções de ordenação de Bloco ---
+    
+    // --- ADICIONADO: Funções de ordenação para as tabelas de Bloco (Coordenação) ---
+    function toggleCoordBlockSort(k) {
+        if (COORD_BLOCK_SORT.metric === k) {
+            COORD_BLOCK_SORT.dir = (COORD_BLOCK_SORT.dir === 'asc') ? 'desc' : 'asc';
+        } else {
+            COORD_BLOCK_SORT.metric = k;
+            COORD_BLOCK_SORT.dir = (k === 'page') ? 'asc' : 'desc'; // 'page' defaults to asc, others to desc
+        }
+        rerenderCoordination(); // Chamar a função de re-renderização da aba Coordenação
+    }
+    window.sortByCoordBlockHeader = function(k){ toggleCoordBlockSort(k); }; // Expor para o HTML
+    function coordBlockSortIndicator(k){ if (COORD_BLOCK_SORT.metric !== k) return ''; return COORD_BLOCK_SORT.dir === 'asc' ? ' ▲' : ' ▼'; }
+    // --- FIM: Funções de ordenação de Bloco (Coordenação) ---
+
+    function sortDetails(details, hourly){
+      var primaryKey = SORT.by || 'revenue';
+      var primaryDir = SORT.dir || 'desc';
+      var mul = (primaryDir === 'asc' ? 1 : -1);
+      details.sort(function(a, b) {
+        const getValue = (item, key) => {
+          if (key === 'hour') return item.hour ?? -1;
+          if (key === 'adunit') return item.adunit || '';
+          return item.metrics?.[key] ?? 0;
+        };
+        const valA_primary = getValue(a, primaryKey);
+        const valB_primary = getValue(b, primaryKey);
+        if (valA_primary < valB_primary) return -1 * mul;
+        if (valA_primary > valB_primary) return 1 * mul;
+        const valA_hour = getValue(a, 'hour');
+        const valB_hour = getValue(b, 'hour');
+        if (valA_hour < valB_hour) return -1;
+        if (valA_hour > valB_hour) return 1;
+        return (getValue(b, 'revenue') - getValue(a, 'revenue'));
+      });
+      return details;
+    }
+
+    function createCompareBlocksCard(compareBlocks){
+      var grouped = { P1: {}, P2: {}, Quiz: {} };
+      compareBlocks.forEach(function(r){
+        var part = r.parte || '';
+        if (!grouped[part]) grouped[part] = {};
+        var label = r.label || '-';
+        if (!grouped[part][label]) grouped[part][label] = [];
+        grouped[part][label].push(r);
+      });
+
+      function tableFor(list){
+        var rows = sortBlockEntries(list, BLOCK_SORT);
+        if (!rows.length) return '';
+        var body = rows.map(function(r){
+          var m = r.metrics || {};
+          return '<tr class="border-t border-slate-700/60 hover:bg-slate-800/60">'
+            + '<td class="py-2 pr-2">'+escapeHtml(r.page || '-')+'</td>'
+            + '<td class="py-2 pr-2 text-right">'+money(m.revenue)+'</td>'
+            + '<td class="py-2 pr-2 text-right">'+num(m.impressions,0)+'</td>'
+            + '<td class="py-2 pr-2 text-right">'+num(m.clicks,0)+'</td>'
+            + '<td class="py-2 pr-2 text-right">'+pct(m.ctr,2)+'</td>'
+            + '<td class="py-2 pr-2 text-right">'+money(m.ecpm)+'</td>'
+            + '<td class="py-2 pr-2 text-right">'+num(m.requests,0)+'</td>'
+            + '<td class="py-2 pr-2 text-right">'+pct(m.coverage,2)+'</td>'
+            + '<td class="py-2 pr-2 text-right">'+money(m.cpc,3)+'</td>'
+            + '</tr>';
+        }).join('');
+        // MODIFICADO: Cabeçalhos da tabela agora são clicáveis para ordenação
+        var head = '<thead class="text-slate-400"><tr>'
+          + '<th class="text-left py-2 pr-2 cursor-pointer" onclick="sortByBlockHeader(\'page\')">Página'+blockSortIndicator('page')+'</th>'
+          + '<th class="text-right py-2 pr-2 cursor-pointer" onclick="sortByBlockHeader(\'revenue\')">Receita'+blockSortIndicator('revenue')+'</th>'
+          + '<th class="text-right py-2 pr-2 cursor-pointer" onclick="sortByBlockHeader(\'impressions\')">Impressões'+blockSortIndicator('impressions')+'</th>'
+          + '<th class="text-right py-2 pr-2 cursor-pointer" onclick="sortByBlockHeader(\'clicks\')">Cliques'+blockSortIndicator('clicks')+'</th>'
+          + '<th class="text-right py-2 pr-2 cursor-pointer" onclick="sortByBlockHeader(\'ctr\')">CTR'+blockSortIndicator('ctr')+'</th>'
+          + '<th class="text-right py-2 pr-2 cursor-pointer" onclick="sortByBlockHeader(\'ecpm\')">eCPM'+blockSortIndicator('ecpm')+'</th>'
+          + '<th class="text-right py-2 pr-2 cursor-pointer" onclick="sortByBlockHeader(\'requests\')">Solicitações'+blockSortIndicator('requests')+'</th>'
+          + '<th class="text-right py-2 pr-2 cursor-pointer" onclick="sortByBlockHeader(\'coverage\')">Cobertura'+blockSortIndicator('coverage')+'</th>'
+          + '<th class="text-right py-2 pr-2 cursor-pointer" onclick="sortByBlockHeader(\'cpc\')">CPC'+blockSortIndicator('cpc')+'</th>'
+          + '</tr></thead>';
+        return '<div class="overflow-auto"><table class="w-full text-sm">'+head+'<tbody>'+body+'</tbody></table></div>';
+      }
+
+      function sectionHtml(partKey, title, borderClass, textClass){
+        var partGroups = grouped[partKey] || {};
+        var preferred = {
+          Quiz: ['rewarded (Quiz)'],
+          P1: ['mob_top (P1)', 'mob_interstitial (P1)'],
+          P2: ['mob_top (P2)', 'mob_offerwall (P2)']
+        };
+        var seen = {};
+        var inner = '';
+        (preferred[partKey] || []).forEach(function(label){
+          if (partGroups[label] && partGroups[label].length) {
+            inner += '<div class="p-3 rounded-lg border border-slate-700 bg-slate-800/30">'
+              + '<h5 class="font-semibold text-sm mb-2 text-slate-200">'+escapeHtml(label)+'</h5>'
+              + tableFor(partGroups[label])
+              + '</div>';
+            seen[label] = true;
+          }
+        });
+        Object.keys(partGroups).sort(function(a,b){ return a.localeCompare(b, 'pt-BR'); }).forEach(function(label){
+          if (seen[label]) return;
+          inner += '<div class="p-3 rounded-lg border border-slate-700 bg-slate-800/30">'
+            + '<h5 class="font-semibold text-sm mb-2 text-slate-200">'+escapeHtml(label)+'</h5>'
+            + tableFor(partGroups[label])
+            + '</div>';
+        });
+        if (!inner) return '';
+        return '<div class="card rounded-xl p-4 '+borderClass+'">'
+          + '<h4 class="text-base font-bold mb-3 '+textClass+'">'+title+'</h4>'
+          + '<div class="space-y-4">'+inner+'</div>'
+          + '</div>';
+      }
+
+      var quizSection = sectionHtml('Quiz', 'Análise Quiz', 'border border-emerald-700 bg-emerald-900/10', 'text-emerald-300');
+      var p1Section = sectionHtml('P1', 'Análise P1', 'border border-blue-700 bg-blue-900/10', 'text-blue-300');
+      var p2Section = sectionHtml('P2', 'Análise P2', 'border border-teal-700 bg-teal-900/10', 'text-teal-300');
+
+      var content = '';
+      [quizSection, p1Section, p2Section].forEach(function(section){ if (section) content += section; });
+      if (!content) {
+        content = '<div class="card rounded-xl p-4 border border-slate-700/60 bg-slate-900/40 text-sm text-slate-300">Sem dados disponíveis para os blocos analisados.</div>';
+      }
+
+      var cmpb = document.createElement('div');
+      cmpb.className = 'card rounded-2xl p-5 space-y-6';
+      // MODIFICADO: Removido buildBlockSortControls do innerHTML
+      cmpb.innerHTML = '<div class="flex flex-wrap items-center justify-between gap-3">'
+        + '<h3 class="text-lg font-bold text-slate-100">Comparativo por Blocos</h3>'
+        + '</div>'
+        + '<div class="space-y-6">'+content+'</div>';
+
+      // MODIFICADO: Removidos os listeners dos controles de ordenação antigos
+      return cmpb;
+    }
+
+    function renderDetailsTable(details, hourly){
+      details = sortDetails(details.slice(), hourly);
+      var head = (hourly ? '<th class="text-left font-semibold py-2 px-2 cursor-pointer" onclick="sortByHeader(\'hour\')">Hora'+sortIndicator('hour')+'</th>' : '')+
+          ['adunit','impressions','clicks','ctr','revenue','ecpm','requests','coverage','cpc','viewability'].map(function(k){
+            var names = {adunit:'Bloco de Anúncio', impressions:'Impressões', clicks:'Cliques', ctr:'CTR', revenue:'Receita', ecpm:'eCPM', requests:'Solicitações', coverage:'Cobertura', cpc:'CPC', viewability:'Viewability'};
+            return '<th class="text-'+(k==='adunit'?'left':'right')+' font-semibold py-2 px-2 cursor-pointer" onclick="sortByHeader(\''+k+'\')">'+names[k]+sortIndicator(k)+'</th>';
+          }).join('');
+      var rows = details.map(function(d){
+        var m=d.metrics;
+        return '<tr class="border-t border-slate-700/60">'+
+          (hourly ? '<td class="py-2 px-2">'+(d.hour>=0?d.hour:'-')+'</td>' : '')+
+          '<td class="py-2 px-2 text-slate-300">'+(d.adunit||'')+'</td>'+
+          '<td class="py-2 px-2 text-right">'+num(m.impressions,0)+'</td>'+
+          '<td class="py-2 px-2 text-right">'+num(m.clicks,0)+'</td>'+
+          '<td class="py-2 px-2 text-right">'+pct(m.ctr, 2)+'</td>'+
+          '<td class="py-2 px-2 text-right">'+money(m.revenue)+'</td>'+
+          '<td class="py-2 px-2 text-right">'+money(m.ecpm)+'</td>'+
+          '<td class="py-2 px-2 text-right">'+num(m.requests,0)+'</td>'+
+          '<td class="py-2 px-2 text-right">'+pct(m.coverage, 2)+'</td>'+
+          '<td class="py-2 px-2 text-right">'+money(m.cpc, 3)+'</td>'+
+          '<td class="py-2 px-2 text-right">'+pct(m.viewability, 2)+'</td>'+
+        '</tr>';
+      }).join('');
+      var totals = details.reduce(function(acc, d){
+        var m = d.metrics;
+        acc.impressions += m.impressions || 0;
+        acc.clicks += m.clicks || 0;
+        acc.revenue += m.revenue || 0;
+        acc.requests += m.requests || 0;
+        if(m.requests > 0){
+          acc.covSum += (m.coverage || 0) * m.requests;
+          acc.viewSum += (m.viewability || 0) * m.requests;
+          acc.dataCnt += m.requests;
+        }
+        return acc;
+      }, {impressions:0, clicks:0, revenue:0, requests:0, covSum:0, viewSum:0, dataCnt:0});
+      var avg = {
+        ctr: totals.impressions > 0 ? (totals.clicks/totals.impressions)*100 : 0,
+        ecpm: totals.impressions > 0 ? (totals.revenue*1000/totals.impressions) : 0,
+        cpc: totals.clicks > 0 ? (totals.revenue/totals.clicks) : 0,
+        coverage: totals.dataCnt > 0 ? totals.covSum/totals.dataCnt : 0,
+        viewability: totals.dataCnt > 0 ? totals.viewSum/totals.dataCnt : 0
+      };
+
+      var totalRow = '<tr class="border-t-2 border-slate-600 font-semibold bg-slate-800/40">'+
+          (hourly ? '<td class="py-2 px-2">—</td>' : '')+
+          '<td class="py-2 px-2">Total</td>'+
+          '<td class="py-2 px-2 text-right">'+num(totals.impressions,0)+'</td>'+
+          '<td class="py-2 px-2 text-right">'+num(totals.clicks,0)+'</td>'+
+          '<td class="py-2 px-2 text-right">'+pct(avg.ctr,2)+'</td>'+
+          '<td class="py-2 px-2 text-right">'+money(totals.revenue)+'</td>'+
+          '<td class="py-2 px-2 text-right">'+money(avg.ecpm)+'</td>'+
+          '<td class="py-2 px-2 text-right">'+num(totals.requests,0)+'</td>'+
+          '<td class="py-2 px-2 text-right">'+pct(avg.coverage,2)+'</td>'+
+          '<td class="py-2 px-2 text-right">'+money(avg.cpc,3)+'</td>'+
+          '<td class="py-2 px-2 text-right">'+pct(avg.viewability,2)+'</td>'+
+        '</tr>';
+      return '<div class="overflow-auto mt-4"><table class="w-full text-sm"><thead class="text-slate-400"><tr>'+head+'</tr></thead><tbody>'+rows+totalRow+'</tbody></table></div>';
+    }
+    
+    function renderDashboard(res){
+      LAST_RES = res;
+      LAST_RES.pricingRulesAdSeleto = res.pricingRulesAdSeleto || [];
+      LAST_RES.pricingRulesIgoal = res.pricingRulesIgoal || [];
+      var hostA = byId('analysis-content'), hostC = byId('compare-content');
+      hostA.innerHTML = ''; hostC.innerHTML = '';
+      var hourly = (res.granularity === 'hour' || res.granularity === 'last6h');
+      
+      res.pages.forEach(function(pg) {
+        var total = pg.total, ex = pg.extras || { rps:0, interactionRate:0 };
+        var totalHtml = '<div class="rounded-2xl p-4 bg-slate-800/30 border border-slate-700/60"><div class="mb-3 font-bold text-teal-300">Resumo da Página</div><div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-9 gap-3">'+
+          ['Impressões','Cliques','CTR','Receita (USD)','eCPM','Solicitações','CPC','RPS','Taxa de Interação'].map(function(label, i) {
+            var value = [num(total.impressions,0),num(total.clicks,0),pct(total.ctr,2),money(total.revenue),money(total.ecpm),num(total.requests,0),money(total.cpc,3),money(ex.rps),pct(ex.interactionRate)][i];
+            var colors = ['cyan','sky','indigo','green','teal','amber','orange','rose','fuchsia'];
+            return '<div class="card rounded-xl p-3 border-l-4 border-'+colors[i]+'-500"><div class="text-slate-400 text-xs font-medium">'+label+'</div><div class="text-lg font-bold text-slate-100 mt-1">'+value+'</div></div>';
+          }).join('')+'</div></div>';
+        
+        var partsHtml = (pg.parts||[]).map(function(p){
+          var partId = pg.page.replace(/[\s/]/g, '-') + '-' + p.parte;
+          return '<div class="card rounded-2xl p-5 space-y-4"><div class="font-bold text-lg text-slate-100">'+p.parte+'</div>'+
+            (function(meta){var u=meta.urls||[];return '<div class="flex flex-wrap gap-2 text-xs"><span class="chip px-2 py-1 rounded-lg mono" title="'+(meta.canal||'')+'">Canal: '+(meta.canal||'-')+'</span>'+(u.length?u.map(function(url){return '<span class="chip px-2 py-1 rounded-lg mono url-badge" title="'+url+'">'+url+'</span>'}).join(' '):'<span class="chip px-2 py-1 rounded-lg mono">—</span>')+'</div>';})(p.meta||{canal:'',urls:[]})+
+            renderDetailsTable(p.details||[], hourly) +
+            '<div id="suggestion-box-'+partId+'" class="mt-4"></div>' +
+          '</div>';
+        }).join('');
+        
+        var wrap = document.createElement('div');
+        wrap.className = 'card rounded-2xl p-6 space-y-6';
+        wrap.innerHTML = '<h3 class="text-xl font-bold text-slate-100 border-b border-slate-700 pb-3">'+pg.page+'</h3>' + totalHtml + partsHtml;
+        hostA.appendChild(wrap);
+        
+        var cpcAlvo = parseFloat(byId('f-cpc-alvo').value) || 0;
+        // As sugestões agora funcionam para granularidade horária E para granularidade de dia
+        if (cpcAlvo > 0) {
+            pg.parts.forEach(function(partData) {
+                renderSuggestions(pg.page, partData, cpcAlvo, partData.meta.rede);
+            });
+        }
+      });
+      
+      if(res.compare&&res.compare.length){var cmp=document.createElement('div');cmp.className='card rounded-2xl p-5';cmp.innerHTML='<h3 class="text-lg font-bold mb-3">Comparativo — Total da Página</h3><div class="overflow-auto"><table class="w-full text-sm"><thead class="text-slate-400"><tr><th class="text-left py-2 pr-2">Página</th><th class="text-right py-2 pr-2">Receita</th><th class="text-right py-2 pr-2">Impressões</th><th class="text-right py-2 pr-2">Cliques</th><th class="text-right py-2 pr-2">CTR</th><th class="text-right py-2 pr-2">eCPM</th><th class="text-right py-2 pr-2">CPC</th><th class="text-right py-2 pr-2">RPS</th><th class="text-right py-2 pr-2">Taxa de interação</th></tr></thead><tbody>'+res.compare.map(function(r){return '<tr class="border-t border-slate-700/60 hover:bg-slate-800/60"><td class="py-2 pr-2">'+r.page+'</td><td class="py-2 pr-2 text-right">'+money(r.revenue)+'</td><td class="py-2 pr-2 text-right">'+num(r.impressions,0)+'</td><td class="py-2 pr-2 text-right">'+num(r.clicks,0)+'</td><td class="py-2 pr-2 text-right">'+pct(r.ctr,2)+'</td><td class="py-2 pr-2 text-right">'+money(r.ecpm)+'</td><td class="py-2 pr-2 text-right">'+money(r.cpc,3)+'</td><td class="py-2 pr-2 text-right">'+money(r.rps)+'</td><td class="py-2 pr-2 text-right">'+pct(r.interactionRate)+'</td></tr>';}).join('')+'</tbody></table></div>';hostC.appendChild(cmp);}
+      var chartBox=document.createElement('div');chartBox.className='card rounded-2xl p-5';chartBox.innerHTML='<div class="flex items-center justify-between gap-4 flex-wrap"><h3 class="text-lg font-bold">Evolução por Hora</h3><div class="flex items-center gap-4 text-sm flex-wrap"><div class="flex items-center gap-2"><label for="cmp-block" class="text-slate-300">Bloco:</label><select id="cmp-block" class="pill rounded-lg px-3 py-1.5"><option value="Total" selected>Total</option><option value="mob_top (P1)">mob_top (P1)</option><option value="mob_interstitial (P1)">mob_interstitial (P1)</option><option value="mob_offerwall (P2)">mob_offerwall (P2)</option><option value="mob_top (P2)">mob_top (P2)</option><option value="rewarded (Quiz)">rewarded (Quiz)</option></select></div><div class="flex items-center gap-2"><label for="cmp-metric" class="text-slate-300">Métrica:</label><select id="cmp-metric" class="pill rounded-lg px-3 py-1.5"><option value="rps" selected>RPS</option><option value="cpc">CPC</option><option value="interactionRate">Taxa de interação</option><option value="ecpm">eCPM</option><option value="coverage">Cobertura</option><option value="effectiveEcpm">eCPM Efetivo</option></select></div></div></div><div class="relative w-full h-96 mt-4"><canvas id="cmp-canvas"></canvas></div>'+(!res.seriesChart||!res.seriesChart.length?'<div class="text-slate-400 text-sm mt-2">Sem dados suficientes para o gráfico.</div>':'');hostC.appendChild(chartBox);
+      if(res.seriesChart&&res.seriesChart.length){function redraw(){setupCompareChart(LAST_RES);}byId('cmp-metric').onchange=redraw;byId('cmp-block').onchange=redraw;redraw();}
+      if(res.compareBlocks && res.compareBlocks.length){
+        hostC.appendChild(createCompareBlocksCard(res.compareBlocks));
+      }
+    }
+
+    function renderSuggestions(pageName, partData, cpcAlvo, network) {
+      var containerId = 'suggestion-box-' + pageName.replace(/[\s/]/g, '-') + '-' + partData.parte;
+      var container = byId(containerId);
+      if (!container) return;
+      
+      var detailsForSuggestions = partData.details.filter(d => d.hour != null);
+      var allHours = [...new Set(detailsForSuggestions.map(d => d.hour))].sort((a, b) => a - b);
+
+      var relevantHours, filteredDetails;
+      if (LAST_RES.granularity === 'day') {
+        relevantHours = [];
+        filteredDetails = partData.details;
+      } else {
+        if (allHours.length < 2) { container.innerHTML = ''; return; }
+        relevantHours = (allHours.length <= 4) ? allHours.slice(0, -1) : allHours.slice(-4, -1);
+        if (relevantHours.length === 0 && allHours.length > 0) relevantHours = [allHours[0]];
+        if (relevantHours.length === 0) { container.innerHTML = ''; return; }
+        filteredDetails = detailsForSuggestions.filter(d => relevantHours.includes(d.hour));
+      }
+      
+      function getAggregatedMetrics(details, blockIdentifier) {
+          let agg = { impressions: 0, clicks: 0, revenue: 0, requests: 0, cpcCorrigidoSum: 0, cpcCorrigidoCount: 0, coverage_w_sum: 0, weight_w_sum: 0 };
+          let found = false;
+          details.forEach(function(d) {
+              if (String(d.adunit).toLowerCase().includes(blockIdentifier)) {
+                  const m = d.metrics;
+                  const weight = m.requests;
+                  agg.impressions += m.impressions;
+                  agg.clicks += m.clicks;
+                  agg.revenue += m.revenue;
+                  agg.requests += weight;
+
+                  if (weight > 0) {
+                      agg.coverage_w_sum += (m.coverage / 100) * weight;
+                      agg.weight_w_sum += weight;
+                  }
+                  if (m.cpcCorrigido) {
+                      agg.cpcCorrigidoSum += m.cpcCorrigido * m.clicks;
+                      agg.cpcCorrigidoCount += m.clicks;
+                  }
+                  found = true;
+              }
+          });
+          if (!found) return null;
+          return {
+              cpc: agg.clicks > 0 ? agg.revenue / agg.clicks : 0,
+              coverage: agg.weight_w_sum > 0 ? (agg.coverage_w_sum / agg.weight_w_sum) * 100 : 0,
+              cpcCorrigido: agg.cpcCorrigidoCount > 0 ? agg.cpcCorrigidoSum / agg.cpcCorrigidoCount : 0
+          };
+      }
+      
+      function generateCard(title, suggestion, reason, data) {
+        var color = suggestion.includes('Aumentar') ? 'green' : (suggestion.includes('Reduzir') ? 'red' : 'amber');
+        var dataHtml = Object.keys(data).map(function(k) { return '<span class="chip text-xs px-2 py-1 rounded">'+k+': <strong>'+data[k]+'</strong></span>'; }).join(' ');
+        return '<div class="card rounded-lg p-3 border-l-4 border-'+color+'-500"><h5 class="font-bold text-slate-100">'+title+'</h5><p class="text-sm text-'+color+'-400 font-semibold">'+suggestion+'</p><p class="text-xs text-slate-400 mt-1">'+reason+'</p><div class="flex flex-wrap gap-2 mt-2">'+dataHtml+'</div></div>';
+      }
+      
+      var suggestionsHtml = '';
+      var periodLabel = LAST_RES.granularity === 'day' ? 'Período' : 'Período (h)';
+      var periodValue = LAST_RES.granularity === 'day' ? 'Dia' : relevantHours.join(', ');
+
+      if (partData.parte === 'P1') {
+        const mobTop = getAggregatedMetrics(filteredDetails, 'mob_top');
+        if (mobTop) {
+          let sugg = '', reason = '';
+          if (mobTop.coverage > 80) { sugg = 'Aumentar a regra'; reason = 'Cobertura > 80%'; }
+          else if (mobTop.coverage < 30) { sugg = 'Reduzir a regra'; reason = 'Cobertura < 30%'; }
+          else if (mobTop.cpc < cpcAlvo) { sugg = 'Aumentar a regra'; reason = 'Cobertura (30-80%) e CPC < Alvo'; }
+          else { sugg = 'Manter a regra'; reason = 'Cobertura (30-80%) e CPC >= Alvo'; }
+          suggestionsHtml += generateCard('P1: mob_top', sugg, reason, { [periodLabel]: periodValue, Cobertura: pct(mobTop.coverage, 2), CPC: money(mobTop.cpc, 3), 'Alvo': money(cpcAlvo, 3) });
+        }
+        const mobInterstitial = getAggregatedMetrics(filteredDetails, 'mob_interstitial');
+        if (mobInterstitial) {
+          let sugg = '', reason = '';
+          if (mobInterstitial.coverage > 95) { sugg = 'Aumentar a regra'; reason = 'Cobertura > 95%'; }
+          else if (mobInterstitial.coverage < 80) { sugg = 'Reduzir a regra'; reason = 'Cobertura < 80%'; }
+          else if (mobInterstitial.cpc < cpcAlvo) { sugg = 'Aumentar a regra'; reason = 'Cobertura (>80%) e CPC < Alvo'; }
+          else { sugg = 'Manter a regra'; reason = 'Cobertura (80-95%) e CPC >= Alvo'; }
+          suggestionsHtml += generateCard('P1: mob_interstitial', sugg, reason, { [periodLabel]: periodValue, Cobertura: pct(mobInterstitial.coverage, 2), CPC: money(mobInterstitial.cpc, 3), 'Alvo': money(cpcAlvo, 3) });
+        }
+      } else if (partData.parte === 'P2') {
+        const mobTopP2 = getAggregatedMetrics(filteredDetails, 'mob_top');
+        if (mobTopP2) {
+          let sugg = '', reason = '';
+          if (mobTopP2.coverage > 80) { sugg = 'Aumentar a regra'; reason = 'Cobertura > 80% (Meta 75%)'; }
+          else if (mobTopP2.coverage < 70) { sugg = 'Reduzir a regra'; reason = 'Cobertura < 70% (Meta 75%)'; }
+          else { sugg = 'Manter a regra'; reason = 'Cobertura na margem (70-80%)'; }
+          suggestionsHtml += generateCard('P2: mob_top', sugg, reason, { [periodLabel]: periodValue, Cobertura: pct(mobTopP2.coverage, 2) });
+        }
+        const offerwall = getAggregatedMetrics(filteredDetails, 'offerwall') || getAggregatedMetrics(filteredDetails, 'rewarded');
+        if (offerwall && mobTopP2) {
+          let sugg = '', reason = '';
+          if (offerwall.cpcCorrigido < mobTopP2.cpc) { sugg = 'Aumentar a regra'; reason = 'CPC Corrigido < CPC mob_top P2'; }
+          else { sugg = 'Manter a regra'; reason = 'CPC Corrigido >= CPC mob_top P2'; }
+          suggestionsHtml += generateCard('P2: offerwall/rewarded', sugg, reason, { [periodLabel]: periodValue, 'CPC Corrigido': money(offerwall.cpcCorrigido, 3), 'CPC mob_top P2': money(mobTopP2.cpc, 3) });
+        }
+      } else if (partData.parte === 'Quiz') {
+        const rewarded = getAggregatedMetrics(filteredDetails, 'rewarded');
+        if (rewarded) {
+          let sugg = 'Ajustar regra para CPC = CPA';
+          let reason = 'Lembrete para buscar o valor de CPA e ajustar a regra do bloco rewarded.';
+          suggestionsHtml += generateCard('Quiz: rewarded', sugg, reason, { [periodLabel]: periodValue, 'CPC Atual': money(rewarded.cpc, 3) });
+        }
+      }
+
+      var pricingHtml = '';
+      var allowPricing = (network === 'AdSeleto' || network === 'Igoal');
+      if (allowPricing && suggestionsHtml) {
+        const pricingBlockId = `pricing-${pageName.replace(/[\s/]/g, '-')}-${partData.parte}`;
+        const safeNetwork = escapeHtml(network || '');
+        const safePageAttr = escapeHtml(pageName);
+        const safePartAttr = escapeHtml(partData.parte);
+        const currencyValue = (partData.meta && partData.meta.moeda ? String(partData.meta.moeda).toUpperCase() : 'USD');
+        const safeCurrency = escapeHtml(currencyValue);
+        const buttonLabel = network === 'Igoal' ? 'Precificar (Igoal)' : 'Precificar (AdSeleto)';
+        const buttonColor = network === 'Igoal' ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-sky-600 hover:bg-sky-500';
+        const borderColor = network === 'Igoal' ? 'border-emerald-500/30' : 'border-sky-500/30';
+        pricingHtml = `
+          <div class="mt-4">
+            <button type="button" class="${buttonColor} text-white text-sm font-semibold px-4 py-2 rounded-xl w-full" onclick="togglePricingCard('${pricingBlockId}')">
+              ${buttonLabel}
+            </button>
+            <div id="${pricingBlockId}" data-network="${safeNetwork}" data-page="${safePageAttr}" data-part="${safePartAttr}" data-currency="${safeCurrency}" class="hidden mt-3 card rounded-xl p-4 bg-slate-900/70 ${borderColor}">
+            </div>
+          </div>
+        `;
+      }
+
+      if (suggestionsHtml) {
+        container.innerHTML = '<div class="card rounded-xl p-4 space-y-3 bg-slate-900/50 border-blue-500/30"><h4 class="text-base font-bold text-slate-100">Sugestões de Precificação</h4>'+suggestionsHtml+'</div>' + pricingHtml;
+      } else {
+        container.innerHTML = '';
+      }
+    }
+
+    window.togglePricingSort = function(network, key) {
+        var state = getPricingSortState(network);
+        if (state.by === key) {
+            state.dir = state.dir === 'asc' ? 'desc' : 'asc';
+        } else {
+            state.by = key;
+            state.dir = key === 'price_rule' ? 'desc' : 'asc';
+        }
+        if (state.lastBlockId) {
+            togglePricingCard(state.lastBlockId, true);
+        }
+    }
+
+    function pricingSortIndicator(network, key) {
+        var state = getPricingSortState(network);
+        if (state.by !== key) return '';
+        return state.dir === 'asc' ? ' ▲' : ' ▼';
+    }
+
+    function togglePricingCard(blockId, forceRerender = false, skipCurrencyCheck = false) {
+        const card = byId(blockId);
+        if (!card) return;
+
+        const network = card.dataset.network || 'AdSeleto';
+        const sortState = getPricingSortState(network);
+        sortState.lastBlockId = blockId;
+
+        const isHidden = card.classList.contains('hidden');
+        const currency = (card.dataset.currency || '').toUpperCase();
+
+        if (!skipCurrencyCheck && currency === 'BRL' && isHidden) {
+            showCurrencyModal(function(){ togglePricingCard(blockId, forceRerender, true); });
+            return;
+        }
+
+        if (isHidden || forceRerender) {
+            const pageName = card.dataset.page || '';
+            const partName = card.dataset.part || '';
+            const pgData = (LAST_RES.pages || []).find(p => p.page === pageName);
+            if (!pgData) { card.innerHTML = '<p class="text-sm text-rose-300">Página não encontrada.</p>'; return; }
+            const partData = (pgData.parts || []).find(p => p.parte === partName);
+            if (!partData) { card.innerHTML = '<p class="text-sm text-rose-300">Parte não encontrada.</p>'; return; }
+
+            if (network === 'AdSeleto') {
+                const utm_source = partData.meta.canal || '';
+                const configuredUrls = partData.meta.urls || [];
+                const adUnits = [...new Set(partData.details.map(d => d.adunit))];
+                const existingRules = LAST_RES.pricingRulesAdSeleto || [];
+
+                let pmd_id = '';
+                const combinations = [];
+                const seen = new Set();
+
+                configuredUrls.forEach(url => {
+                    const urlPath = url.split('/').pop() || url;
+                    adUnits.forEach(unit => {
+                        const key = `${urlPath}||${unit}||${utm_source}`;
+                        if (seen.has(key)) return;
+                        seen.add(key);
+                        const existingRule = existingRules.find(r =>
+                            r.utm_source === utm_source && r.slot_id === unit && r.url === urlPath
+                        );
+                        if (existingRule && existingRule.domain_id) pmd_id = existingRule.domain_id;
+
+                        combinations.push({
+                            urlPath: urlPath,
+                            unit: unit,
+                            utm_source: utm_source,
+                            spnprice_id: existingRule ? existingRule.spnprice_id : '',
+                            price_rule: existingRule ? existingRule.price_rule : ''
+                        });
+                    });
+                });
+
+                combinations.sort(function(a, b) {
+                    const key = sortState.by;
+                    const dir = sortState.dir === 'asc' ? 1 : -1;
+                    let valA = a[key];
+                    let valB = b[key];
+                    if (key === 'price_rule') {
+                        valA = parseFloat(valA) || 0;
+                        valB = parseFloat(valB) || 0;
+                    } else {
+                        valA = String(valA || '').toLowerCase();
+                        valB = String(valB || '').toLowerCase();
+                    }
+                    if (valA < valB) return -1 * dir;
+                    if (valA > valB) return 1 * dir;
+                    return 0;
+                });
+
+                const tableRowsHtml = combinations.map(function(combo) {
+                    return `
+                <tr class="border-t border-slate-700/60">
+                    <input type="hidden" name="spnprice_id" value="${escapeHtml(combo.spnprice_id)}">
+                    <input type="hidden" name="utm_source" value="${escapeHtml(combo.utm_source)}">
+                    <input type="hidden" name="url" value="${escapeHtml(combo.urlPath)}">
+                    <input type="hidden" name="slot_id" value="${escapeHtml(combo.unit)}">
+                    <td class="text-slate-400 text-xs py-2">${escapeHtml(combo.utm_source || '-')}</td>
+                    <td class="text-slate-400 text-xs py-2">${escapeHtml(combo.urlPath || '-')}</td>
+                    <td class="text-slate-300 text-xs py-2 font-semibold">${escapeHtml(combo.unit)}</td>
+                    <td class="py-2">
+                        <input name="price_rule" type="number" step="0.01" class="w-24 bg-slate-800 rounded-md px-2 py-1 text-sm" placeholder="0.00" value="${escapeHtml(combo.price_rule)}">
+                    </td>
+                </tr>`;
+                }).join('');
+
+                card.innerHTML = combinations.length ? `
+                <form data-network="AdSeleto" onsubmit="savePricingRules(event)">
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">PMD ID (para todas as regras)</label>
+                            <input name="domain_id" required class="w-full pill rounded-lg px-3 py-2 text-sm" placeholder="Preencher na 1ª vez" value="${escapeHtml(pmd_id)}">
+                        </div>
+                    </div>
+                    <div class="overflow-auto max-h-64">
+                        <table class="w-full text-left text-sm pricing-table">
+                            <thead>
+                                <tr class="text-slate-400">
+                                    <th class="font-semibold" onclick="togglePricingSort('AdSeleto','utm_source')">UTM Source${pricingSortIndicator('AdSeleto','utm_source')}</th>
+                                    <th class="font-semibold" onclick="togglePricingSort('AdSeleto','urlPath')">URL${pricingSortIndicator('AdSeleto','urlPath')}</th>
+                                    <th class="font-semibold" onclick="togglePricingSort('AdSeleto','unit')">Bloco${pricingSortIndicator('AdSeleto','unit')}</th>
+                                    <th class="font-semibold" onclick="togglePricingSort('AdSeleto','price_rule')">Valor${pricingSortIndicator('AdSeleto','price_rule')}</th>
+                                </tr>
+                            </thead>
+                            <tbody>${tableRowsHtml}</tbody>
+                        </table>
+                    </div>
+                    <button type="submit" class="mt-4 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold px-4 py-2 rounded-xl w-full">Salvar Todas as Regras</button>
+                </form>` : '<p class="text-sm text-slate-300">Nenhuma combinação de URL e bloco encontrada.</p>';
+            } else if (network === 'Igoal') {
+                const canal = partData.meta.canal || '';
+                const utmSourceValue = extractUtmSource(canal);
+                const configuredUrls = partData.meta.urls || [];
+                const adUnits = [...new Set(
+                    (partData.details || [])
+                        .map(function(detail) { return detail.adunit; })
+                        .filter(function(unit) {
+                            return typeof unit === 'string' && unit.toLowerCase().includes('mob');
+                        })
+                )];
+                const existingRules = LAST_RES.pricingRulesIgoal || [];
+
+                const combinations = [];
+                const seen = new Set();
+                let defaultCompanyId = '';
+
+                configuredUrls.forEach(function(url) {
+                    const parsed = parseDomainAndPath(url);
+                    const domain = parsed.domain;
+                    const path = parsed.path;
+                    adUnits.forEach(function(unit) {
+                        const key = `${domain}||${path}||${unit}||${utmSourceValue}`;
+                        if (seen.has(key)) return;
+                        seen.add(key);
+                        const existingRule = existingRules.find(function(rule) {
+                            return String(rule.dominio || '').toLowerCase() === domain &&
+                                   String(rule.url || '').toLowerCase() === path.toLowerCase() &&
+                                   String(rule.bloco || '') === String(unit || '') &&
+                                   String(rule.utm_source || '') === String(utmSourceValue || '');
+                        });
+                        if (existingRule && existingRule.company_id && !defaultCompanyId) {
+                            defaultCompanyId = existingRule.company_id;
+                        }
+                        combinations.push({
+                            rule_id: existingRule ? existingRule.rule_id : '',
+                            dominio: domain,
+                            urlPath: path,
+                            unit: unit,
+                            utm_source: utmSourceValue,
+                            price_rule: ensureTwoDecimals(existingRule ? existingRule.price_rule : ''),
+                            company_id: existingRule ? existingRule.company_id : ''
+                        });
+                    });
+                });
+
+                combinations.sort(function(a, b) {
+                    const key = sortState.by;
+                    const dir = sortState.dir === 'asc' ? 1 : -1;
+                    let valA = a[key];
+                    let valB = b[key];
+                    if (key === 'price_rule') {
+                        valA = parseFloat(valA) || 0;
+                        valB = parseFloat(valB) || 0;
+                    } else {
+                        valA = String(valA || '').toLowerCase();
+                        valB = String(valB || '').toLowerCase();
+                    }
+                    if (valA < valB) return -1 * dir;
+                    if (valA > valB) return 1 * dir;
+                    return 0;
+                });
+
+                const rowsHtml = combinations.map(function(combo) {
+                    return `
+                <tr class="border-t border-slate-700/60">
+                    <input type="hidden" name="rule_id" value="${escapeHtml(combo.rule_id)}">
+                    <input type="hidden" name="dominio" value="${escapeHtml(combo.dominio)}">
+                    <input type="hidden" name="utm_source" value="${escapeHtml(combo.utm_source)}">
+                    <input type="hidden" name="url" value="${escapeHtml(combo.urlPath)}">
+                    <input type="hidden" name="bloco" value="${escapeHtml(combo.unit)}">
+                    <td class="text-slate-400 text-xs py-2">${escapeHtml(combo.dominio || '-')}</td>
+                    <td class="text-slate-400 text-xs py-2">${escapeHtml(combo.urlPath || '-')}</td>
+                    <td class="text-slate-400 text-xs py-2">${escapeHtml(combo.utm_source || '-')}</td>
+                    <td class="text-slate-300 text-xs py-2 font-semibold">${escapeHtml(combo.unit || '-')}</td>
+                    <td class="py-2">
+                        <input name="price_rule" type="number" step="0.01" class="w-24 bg-slate-800 rounded-md px-2 py-1 text-sm" placeholder="0.00" value="${escapeHtml(combo.price_rule)}">
+                    </td>
+                </tr>`;
+                }).join('');
+
+                const companyValue = escapeHtml(defaultCompanyId);
+                const submitDisabled = combinations.length ? '' : ' disabled';
+
+                card.innerHTML = combinations.length ? `
+                <form data-network="Igoal" onsubmit="savePricingRules(event)">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">Company ID (para todas as regras)</label>
+                            <input name="company_id" required class="w-full pill rounded-lg px-3 py-2 text-sm" placeholder="Informe o Company ID" value="${companyValue}">
+                        </div>
+                        <div>
+                            <label class="block text-xs text-slate-400 mb-1">UTM Source detectada</label>
+                            <input class="w-full pill rounded-lg px-3 py-2 text-sm bg-slate-800/60 border border-slate-700/60" value="${escapeHtml(utmSourceValue)}" readonly>
+                        </div>
+                    </div>
+                    <div class="overflow-auto max-h-64">
+                        <table class="w-full text-left text-sm pricing-table">
+                            <thead>
+                                <tr class="text-slate-400">
+                                    <th class="font-semibold" onclick="togglePricingSort('Igoal','dominio')">Domínio${pricingSortIndicator('Igoal','dominio')}</th>
+                                    <th class="font-semibold" onclick="togglePricingSort('Igoal','urlPath')">URL${pricingSortIndicator('Igoal','urlPath')}</th>
+                                    <th class="font-semibold" onclick="togglePricingSort('Igoal','utm_source')">UTM Source${pricingSortIndicator('Igoal','utm_source')}</th>
+                                    <th class="font-semibold" onclick="togglePricingSort('Igoal','unit')">Bloco${pricingSortIndicator('Igoal','unit')}</th>
+                                    <th class="font-semibold" onclick="togglePricingSort('Igoal','price_rule')">Valor${pricingSortIndicator('Igoal','price_rule')}</th>
+                                </tr>
+                            </thead>
+                            <tbody>${rowsHtml}</tbody>
+                        </table>
+                    </div>
+                    <button type="submit" class="mt-4 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold px-4 py-2 rounded-xl w-full"${submitDisabled}>Salvar Todas as Regras</button>
+                </form>` : '<p class="text-sm text-slate-300">Nenhum bloco elegível encontrado para precificação.</p>';
+            } else {
+                card.innerHTML = '<p class="text-sm text-slate-300">Rede sem suporte para precificação automática.</p>';
+            }
+        }
+
+        if (forceRerender) {
+            card.classList.remove('hidden');
+        } else {
+            card.classList.toggle('hidden');
+        }
+    }
+
+    function schedulePricingSync(network) {
+        var runner = (network === 'Igoal') ? 'runIgoalPricingUpdate' : 'runAdSeletoPricingUpdate';
+        if (!runner) return;
+        if (typeof google === 'undefined' || !google.script || !google.script.run) return;
+
+        if (SYNC_TIMERS[network]) {
+            clearTimeout(SYNC_TIMERS[network]);
+        }
+
+        SYNC_TIMERS[network] = setTimeout(function(){
+            SYNC_TIMERS[network] = null;
+            google.script.run
+                .withSuccessHandler(function(res){
+                    var ok = (res && typeof res.ok !== 'undefined') ? !!res.ok : true;
+                    var message = (res && res.message) ? res.message : 'Sincronização concluída.';
+                    showToast(message, ok ? 'success' : 'error');
+                })
+                .withFailureHandler(function(err){
+                    var message = err && err.message ? err.message : 'Erro desconhecido.';
+                    showToast('Falha na sincronização automática:\n' + message, 'error');
+                })[runner]();
+        }, 5000);
+    }
+
+    function savePricingRules(event) {
+        event.preventDefault();
+        const form = event.target;
+        const network = form.dataset.network || 'AdSeleto';
+        const rows = form.querySelectorAll('tbody tr');
+
+        if (network === 'AdSeleto') {
+            const pmdId = (form.domain_id.value || '').trim();
+            if (!pmdId) { showToast('O PMD ID é obrigatório.', 'error'); return; }
+
+            const rulesPayload = [];
+            rows.forEach(row => {
+                const price_rule = row.querySelector('[name=price_rule]').value;
+                if (price_rule) {
+                    rulesPayload.push({
+                        spnprice_id: row.querySelector('[name=spnprice_id]').value,
+                        domain_id: pmdId,
+                        price_rule: price_rule,
+                        utm_source: row.querySelector('[name=utm_source]').value,
+                        slot_id: row.querySelector('[name=slot_id]').value,
+                        url: row.querySelector('[name=url]').value,
+                    });
+                }
+            });
+
+            if(rulesPayload.length === 0) { showToast('Preencha ao menos um valor para salvar.', 'error'); return; }
+
+            google.script.run.withSuccessHandler(function(res) {
+                if (res.ok) {
+                    showToast('Regras salvas na planilha com sucesso!\nSincronização automática será enviada em instantes.', 'success');
+                    const updatedRules = res.rules || [];
+                    updatedRules.forEach(newRule => {
+                        const index = (LAST_RES.pricingRulesAdSeleto || []).findIndex(r => String(r.spnprice_id) === String(newRule.spnprice_id));
+                        if (index > -1) { LAST_RES.pricingRulesAdSeleto[index] = newRule; }
+                        else { LAST_RES.pricingRulesAdSeleto.push(newRule); }
+                    });
+                    form.closest('.card').classList.add('hidden');
+                    schedulePricingSync('AdSeleto');
+                } else {
+                    showToast('Falha ao salvar as regras: ' + (res.message || 'Erro desconhecido.'), 'error');
+                }
+            }).upsertPricingRulesAdSeleto(rulesPayload);
+        } else if (network === 'Igoal') {
+            const companyId = (form.company_id.value || '').trim();
+            if (!companyId) { showToast('O Company ID é obrigatório.', 'error'); return; }
+
+            const rulesPayload = [];
+            rows.forEach(row => {
+                const priceInput = row.querySelector('[name=price_rule]');
+                if (!priceInput) return;
+                const formattedPrice = ensureTwoDecimals(priceInput.value);
+                if (formattedPrice) {
+                    priceInput.value = formattedPrice;
+                    rulesPayload.push({
+                        rule_id: row.querySelector('[name=rule_id]').value,
+                        dominio: row.querySelector('[name=dominio]').value,
+                        utm_source: row.querySelector('[name=utm_source]').value,
+                        url: row.querySelector('[name=url]').value,
+                        bloco: row.querySelector('[name=bloco]').value,
+                        company_id: companyId,
+                        price_rule: formattedPrice
+                    });
+                }
+            });
+
+            if(rulesPayload.length === 0) { showToast('Preencha ao menos um valor para salvar.', 'error'); return; }
+
+            google.script.run.withSuccessHandler(function(res) {
+                if (res.ok) {
+                    showToast('Regras da Igoal salvas na planilha!\nSincronização automática será enviada em instantes.', 'success');
+                    const updatedRules = res.rules || [];
+                    updatedRules.forEach(newRule => {
+                        if (!newRule.company_id) newRule.company_id = companyId;
+                        newRule.price_rule = ensureTwoDecimals(newRule.price_rule);
+                        const index = (LAST_RES.pricingRulesIgoal || []).findIndex(r => String(r.rule_id) === String(newRule.rule_id));
+                        if (index > -1) { LAST_RES.pricingRulesIgoal[index] = newRule; }
+                        else { LAST_RES.pricingRulesIgoal.push(newRule); }
+                    });
+                    form.closest('.card').classList.add('hidden');
+                    schedulePricingSync('Igoal');
+                } else {
+                    showToast('Falha ao salvar as regras: ' + (res.message || 'Erro desconhecido.'), 'error');
+                }
+            }).upsertPricingRulesIgoal(rulesPayload);
+        } else {
+            showToast('Rede não suportada para salvar regras.', 'error');
+        }
+    }
+    
+    function setupCompareChart(res){
+      var metric=byId('cmp-metric').value||'rps', block=byId('cmp-block').value||'Total';
+      var seriesData=(block==='Total')?res.seriesChart:(res.seriesChartByBlock?res.seriesChartByBlock[block]:[]);
+      if(!seriesData||seriesData.length===0||!seriesData[0].points||seriesData[0].points.length===0){if(CHART.inst){CHART.inst.destroy();CHART.inst=null;}byId('cmp-canvas').style.display='none';return;}
+      byId('cmp-canvas').style.display='block';var ctx=byId('cmp-canvas').getContext('2d');var labels=seriesData[0].points.map(function(p){return p.label;});
+      var palette=['#22d3ee','#a78bfa','#f59e0b','#34d399','#f472b6','#60a5fa','#f87171','#10b981'];
+      var datasets=seriesData.map(function(series,idx){var data=series.points.map(function(p){return p[metric]||0;});return{label:series.page,data:data,borderColor:palette[idx%palette.length],backgroundColor:'transparent',tension:0.2,pointRadius:3,pointHoverRadius:5};});
+      if(CHART.inst)CHART.inst.destroy();
+      CHART.inst=new Chart(ctx,{type:'line',data:{labels:labels,datasets:datasets},plugins:[ChartDataLabels],options:{responsive:true,maintainAspectRatio:false,scales:{x:{grid:{color:'rgba(100,116,139,.2)'},ticks:{color:'#94a3b8'}},y:{grid:{color:'rgba(100,116,139,.2)'},ticks:{color:'#94a3b8'},beginAtZero:true}},plugins:{datalabels:{align:'top',offset:6,color:'rgba(203,213,225,0.6)',font:{size:9},formatter:function(v){if(v===0)return '';if(metric==='rps'||metric==='effectiveEcpm'||metric==='ecpm')return money(v,2);if(metric==='interactionRate'||metric==='coverage')return pct(v,1);return num(v,2);}},legend:{labels:{color:'#cbd5e1'}},tooltip:{callbacks:{label:function(ctx){var v=ctx.parsed.y,l=ctx.dataset.label;if(metric==='rps'||metric==='effectiveEcpm'||metric==='ecpm')return l+': '+money(v);if(metric==='interactionRate'||metric==='coverage')return l+': '+pct(v);return l+': '+num(v);}}}}}});
+    }
+
+    function renderCfgTable(rows){
+      var tb=byId('cfg-list');
+      tb.innerHTML=rows.map(function(r){return '<tr class="border-t border-slate-700/60 hover:bg-slate-800/60 align-top"><td class="py-2 px-2">'+r.pessoa+'</td><td class="py-2 px-2">'+r.operacao+'</td><td class="py-2 px-2">'+r.pagina+'</td><td class="py-2 px-2">'+r.parte+'</td><td class="py-2 px-2">'+r.canal+'</td><td class="py-2 px-2">'+(r.urls||[]).join('; ')+'</td><td class="py-2 px-2">'+(r.rede||'-')+'</td><td class="py-2 px-2">'+(r.moeda||'USD')+'</td>'+
+      '<td class="py-2 px-2 whitespace-nowrap"><button type="button" class="text-sky-400 hover:text-sky-300 text-xs font-semibold mr-3" onclick="editCfgItem(\''+r.id+'\')">Editar</button><button type="button" class="text-rose-400 hover:text-rose-300 text-xs font-semibold" onclick="deleteCfgItem(\''+r.id+'\')">Apagar</button></td></tr>';}).join('');
+    }
+
+    function editCfgItem(id) {
+        var item = CFG.rows.find(function(r){ return r.id === id; });
+        if (!item) return;
+        byId('cfg-id').value = item.id;
+        byId('cfg-pessoa').value = item.pessoa;
+        byId('cfg-operacao').value = item.operacao;
+        byId('cfg-pagina').value = item.pagina;
+        byId('cfg-parte').value = item.parte;
+        byId('cfg-canal').value = item.canal;
+        byId('cfg-urls').value = (item.urls || []).join(';');
+        byId('cfg-rede').value = item.rede || '';
+        byId('cfg-moeda').value = item.moeda || 'USD';
+        byId('cfg-pessoa').focus();
+    }
+
+    function deleteCfgItem(id) {
+        if (confirm('Tem certeza que deseja apagar este item?')) { 
+            google.script.run.withSuccessHandler(function() {
+                showToast('Item apagado com sucesso!', 'success');
+                loadConfig();
+            }).deleteConfig(id);
+        }
+    }
+
+    function wireCfgForm(){
+      byId('btn-limpar').onclick=function(){byId('cfg-id').value='';byId('cfg-pessoa').value='';byId('cfg-operacao').value='';byId('cfg-pagina').value='';byId('cfg-parte').value='P1';byId('cfg-canal').value='';byId('cfg-urls').value=''; byId('cfg-rede').value=''; byId('cfg-moeda').value='USD';};
+      byId('form-cfg').onsubmit = function(e){
+        e.preventDefault();
+        var payload={id:byId('cfg-id').value,pessoa:(byId('cfg-pessoa').value||'').trim(),operacao:(byId('cfg-operacao').value||'').trim(),pagina:(byId('cfg-pagina').value||'').trim(),parte:(byId('cfg-parte').value||'').trim(),canal:(byId('cfg-canal').value||'').trim(),urls:(byId('cfg-urls').value||'').trim(),rede:(byId('cfg-rede').value||'').trim(),moeda:(byId('cfg-moeda').value||'USD').trim().toUpperCase()};
+        if(!payload.pessoa||!payload.operacao||!payload.pagina||!payload.parte){ showToast('Preencha Pessoa, Operação, Página e Parte.', 'error'); return; }
+
+        google.script.run.withSuccessHandler(function(){
+            showToast('Configuração salva com sucesso!', 'success');
+            byId('btn-limpar').click();
+            loadConfig();
+        }).upsertConfig(payload);
+      };
+    }
+
+    // MODIFICADO: DOMContentLoaded atualizado
+    document.addEventListener('DOMContentLoaded', function(){
+        // REMOVIDO: initSearchableSelect(...)
+        
+        // ADICIONADO: Inicialização dos novos filtros customizados
+        wireCustomSelect('f-pessoa', FILTRO_PESSOA, function(pessoa) {
+            // Callback "onchange" para Pessoa
+            var ops = (CFG.opsByPessoa && pessoa) ? (CFG.opsByPessoa[pessoa] || []) : [];
+            FILTRO_OPERACAO.options = (ops || []).slice();
+            FILTRO_OPERACAO.selected = ''; // Reseta operação
+            FILTRO_OPERACAO.searchTerm = '';
+            setCustomSelectDisabled('f-operacao', FILTRO_OPERACAO, !ops.length);
+            updateCustomSelectSummary('f-operacao', FILTRO_OPERACAO);
+            resetPQ(); // Reseta páginas
+        });
+        
+        wireCustomSelect('f-operacao', FILTRO_OPERACAO, function(operacao) {
+            // Callback "onchange" para Operação
+            var key = FILTRO_PESSOA.selected + '||' + operacao;
+            var pags = (CFG.paginasByOp && CFG.paginasByOp[key]) ? CFG.paginasByOp[key] : [];
+            setPQOptions(pags);
+        });
+        // FIM ADIÇÃO
+
+        loadConfig();
+        wirePQ();
+        wireFilters();
+        wireCfgForm();
+        setupCurrencyModal();
+    });
+</script>
+</body>
+</html>
