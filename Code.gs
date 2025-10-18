@@ -591,6 +591,8 @@ function getDefaultDistributionControls_() {
     siteMinSessions: 300,
     urlSeedPercent: 0.02,
     urlSeedSessions: 50,
+    urlMinRecipients: 3,
+    urlRequireAll: 0,
     urlMaxShare: 0.4,
     urlStep: 0.35,
     coverageTarget: 0.75,
@@ -618,10 +620,12 @@ function buildDistributionControls_(params) {
       controls[key] = Math.max(1000, Math.round(parsed));
     } else if (key === 'tau' || key === 'tauLocal') {
       controls[key] = Math.max(1, parsed);
-    } else if (key === 'reliabilityK' || key === 'siteMinSessions' || key === 'urlSeedSessions') {
+    } else if (key === 'reliabilityK' || key === 'siteMinSessions' || key === 'urlSeedSessions' || key === 'urlMinRecipients') {
       controls[key] = Math.max(0, Math.round(parsed));
     } else if (key === 'ucbZ') {
       controls[key] = Math.max(0, parsed);
+    } else if (key === 'urlRequireAll') {
+      controls[key] = parsed ? 1 : 0;
     } else {
       controls[key] = Math.max(0, parsed);
     }
@@ -646,7 +650,8 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
       selectedSite: '',
       latestHour: hoursInfo && hoursInfo.latestHourLabel ? hoursInfo.latestHourLabel : '',
       totalSessions: controls.totalSessions,
-      hours: windowHours.map(function (hour) { return hour.label; })
+      hours: windowHours.map(function (hour) { return hour.label; }),
+      globalUrls: { more: [], less: [], all: [], averageShare: 0 }
     };
   }
 
@@ -843,7 +848,8 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
       selectedSite: '',
       latestHour: hoursInfo && hoursInfo.latestHourLabel ? hoursInfo.latestHourLabel : '',
       totalSessions: controls.totalSessions,
-      hours: windowHours.map(function (hour) { return hour.label; })
+      hours: windowHours.map(function (hour) { return hour.label; }),
+      globalUrls: { more: [], less: [], all: [], averageShare: 0 }
     };
   }
 
@@ -884,36 +890,36 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
   normalizeSharesWithBounds_(siteBounds);
 
   var siteOutput = [];
+  var globalAggregates = [];
   var defaultSite = '';
   var bestShare = -1;
 
   siteBounds.forEach(function (item) {
     var siteRow = siteRows.find(function (row) { return row.site === item.key; });
     if (!siteRow) return;
-    var currentShare = item.state && item.state.currentShare != null && item.state.currentShare !== '' ? normalizeShareValue_(item.state.currentShare) : 0;
-    var suggestedShare = item.value;
-    var deltaShare = suggestedShare - currentShare;
+    var siteState = item.state || {};
+    var siteCurrentShare = siteState.currentShare != null && siteState.currentShare !== '' ? normalizeShareValue_(siteState.currentShare) : 0;
+    var siteSuggestedShare = item.value;
+    var siteDeltaShare = siteSuggestedShare - siteCurrentShare;
     var totalSessions = controls.totalSessions;
-    var currentSessions = currentShare * totalSessions;
-    var suggestedSessions = suggestedShare * totalSessions;
-    if (suggestedShare > bestShare) {
-      bestShare = suggestedShare;
+    var siteCurrentSessions = siteCurrentShare * totalSessions;
+    var siteSuggestedSessions = siteSuggestedShare * totalSessions;
+    if (siteSuggestedShare > bestShare) {
+      bestShare = siteSuggestedShare;
       defaultSite = siteRow.site;
     }
 
-    var siteState = item.state || {};
-    siteRow.currentShare = currentShare;
-    siteRow.suggestedShare = suggestedShare;
-    siteRow.deltaShare = deltaShare;
-    siteRow.currentSessions = currentSessions;
-    siteRow.suggestedSessions = suggestedSessions;
+    siteRow.currentShare = siteCurrentShare;
+    siteRow.suggestedShare = siteSuggestedShare;
+    siteRow.deltaShare = siteDeltaShare;
+    siteRow.currentSessions = siteCurrentSessions;
+    siteRow.suggestedSessions = siteSuggestedSessions;
     siteRow.nextEvaluation = siteState.nextEvalHour || '';
     siteRow.lastChange = siteState.lastChangeHour || '';
 
     var siteUrls = siteRow.urls || [];
-    var siteShare = suggestedShare;
-    var siteSessionsTarget = siteShare * controls.totalSessions;
-    var minSeedShare = siteSessionsTarget > 0 ? Math.max(controls.urlSeedPercent, controls.urlSeedSessions / siteSessionsTarget) : controls.urlSeedPercent;
+    var siteSessionsReference = Math.max(siteSuggestedSessions, siteCurrentSessions);
+    var minSeedShare = siteSessionsReference > 0 ? Math.max(controls.urlSeedPercent, controls.urlSeedSessions / siteSessionsReference) : controls.urlSeedPercent;
     minSeedShare = clamp_(minSeedShare, 0, 1);
 
     var promising = siteUrls.filter(function (entry) {
@@ -955,13 +961,39 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
       baseShareMap = computeSoftmaxShares_(siteUrls, controls.tauLocal, 'ucbScore');
     }
 
+    var requiredKeys = {};
+    var requiredCount = controls.urlRequireAll ? siteUrls.length : Math.min(siteUrls.length, Math.max(0, controls.urlMinRecipients));
+    if (controls.urlRequireAll && siteUrls.length) {
+      requiredCount = siteUrls.length;
+    }
+    if (requiredCount > 0 && siteUrls.length) {
+      var priority = siteUrls.slice().sort(function (a, b) {
+        var aBase = baseShareMap[a.key] != null ? baseShareMap[a.key] : 0;
+        var bBase = baseShareMap[b.key] != null ? baseShareMap[b.key] : 0;
+        if (bBase === aBase) {
+          return b.score - a.score;
+        }
+        return bBase - aBase;
+      });
+      for (var r = 0; r < requiredCount && r < priority.length; r++) {
+        requiredKeys[priority[r].key] = true;
+      }
+    }
+    siteUrls.forEach(function (entry) {
+      var statusValue = String((entry.state && entry.state.status) || '').toLowerCase();
+      if (statusValue === 'controle') {
+        requiredKeys[entry.key] = true;
+      }
+    });
+
     var urlItems = siteUrls.map(function (entry) {
       var stateEntry = entry.state || {};
       var prevShare = stateEntry.currentShare != null && stateEntry.currentShare !== '' ? normalizeShareValue_(stateEntry.currentShare) : null;
       if (prevShare == null && stateEntry.lastShare != null && stateEntry.lastShare !== '') {
         prevShare = normalizeShareValue_(stateEntry.lastShare);
       }
-      var minBound = minSeedShare;
+      var isRequired = !!requiredKeys[entry.key];
+      var minBound = isRequired ? minSeedShare : 0;
       if (String(stateEntry.status || '').toLowerCase() === 'controle') {
         minBound = Math.max(minBound, controls.controlReserve);
       }
@@ -979,20 +1011,24 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
         maxBound: maxBound,
         prevShare: prevShare,
         entry: entry,
-        state: stateEntry
+        state: stateEntry,
+        required: isRequired
       };
     });
 
     normalizeSharesWithBounds_(urlItems);
 
-    urlsBySite[siteRow.site] = urlItems.map(function (item) {
+    var siteUrlRows = urlItems.map(function (item) {
       var entry = item.entry;
       var stateEntry = item.state || {};
-      var currentShare = stateEntry.currentShare != null && stateEntry.currentShare !== '' ? normalizeShareValue_(stateEntry.currentShare) : 0;
-      var suggestedShare = item.value;
-      var deltaShare = suggestedShare - currentShare;
-      var currentSessions = currentShare * siteSessionsTarget;
-      var suggestedSessions = suggestedShare * siteSessionsTarget;
+      var urlCurrentShare = stateEntry.currentShare != null && stateEntry.currentShare !== '' ? normalizeShareValue_(stateEntry.currentShare) : 0;
+      var urlSuggestedShare = item.value;
+      var urlDeltaShare = urlSuggestedShare - urlCurrentShare;
+      var currentSessions = urlCurrentShare * siteCurrentSessions;
+      var suggestedSessions = urlSuggestedShare * siteSuggestedSessions;
+      var currentGlobalShare = urlCurrentShare * siteCurrentShare;
+      var suggestedGlobalShare = urlSuggestedShare * siteSuggestedShare;
+      var deltaGlobalShare = suggestedGlobalShare - currentGlobalShare;
       var status = stateEntry.status || (entry.rounds <= 1 ? 'seed' : 'ok');
       return {
         site: siteRow.site,
@@ -1007,16 +1043,23 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
         rounds: entry.rounds,
         score: entry.score,
         ucb: entry.ucbScore,
-        currentShare: currentShare,
-        suggestedShare: suggestedShare,
-        deltaShare: deltaShare,
+        currentShare: urlCurrentShare,
+        suggestedShare: urlSuggestedShare,
+        deltaShare: urlDeltaShare,
         status: status,
         lastChange: stateEntry.lastChangeHour || '',
         nextEval: stateEntry.nextEvalHour || '',
         currentSessions: currentSessions,
-        suggestedSessions: suggestedSessions
+        suggestedSessions: suggestedSessions,
+        currentGlobalShare: currentGlobalShare,
+        suggestedGlobalShare: suggestedGlobalShare,
+        deltaGlobalShare: deltaGlobalShare,
+        guaranteed: !!item.required
       };
     });
+
+    urlsBySite[siteRow.site] = siteUrlRows;
+    Array.prototype.push.apply(globalAggregates, siteUrlRows);
   });
 
   var siteOutput = siteBounds.map(function (item) {
@@ -1046,6 +1089,38 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
     defaultSite = siteOutput[0].site;
   }
 
+  var sortedGlobal = globalAggregates.slice().sort(function (a, b) {
+    return (b.suggestedGlobalShare || 0) - (a.suggestedGlobalShare || 0);
+  });
+  var averageGlobalShare = sortedGlobal.length ? 1 / sortedGlobal.length : 0;
+  var requiredTop = controls.urlRequireAll ? sortedGlobal.length : Math.min(sortedGlobal.length, Math.max(0, controls.urlMinRecipients));
+  var globalMore = [];
+  var globalLess = [];
+  sortedGlobal.forEach(function (row, index) {
+    var qualifies = index < requiredTop || (row.suggestedGlobalShare || 0) >= averageGlobalShare || row.guaranteed;
+    if (qualifies) {
+      globalMore.push(row);
+    } else {
+      globalLess.push(row);
+    }
+  });
+  if (!globalMore.length && sortedGlobal.length) {
+    globalMore.push(sortedGlobal[0]);
+  }
+  if (!globalLess.length && globalMore.length < sortedGlobal.length) {
+    sortedGlobal.forEach(function (row) {
+      if (globalMore.indexOf(row) === -1) {
+        globalLess.push(row);
+      }
+    });
+  }
+  var globalSummary = {
+    more: globalMore,
+    less: globalLess,
+    all: sortedGlobal,
+    averageShare: averageGlobalShare
+  };
+
   return {
     controls: controls,
     sites: siteOutput,
@@ -1053,7 +1128,8 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
     selectedSite: defaultSite,
     latestHour: hoursInfo && hoursInfo.latestHourLabel ? hoursInfo.latestHourLabel : '',
     totalSessions: controls.totalSessions,
-    hours: windowHours.map(function (hour) { return hour.label; })
+    hours: windowHours.map(function (hour) { return hour.label; }),
+    globalUrls: globalSummary
   };
 }
 
