@@ -188,6 +188,7 @@ function getDashboardData(params) {
   const siteSummary = buildSiteSummary_(filteredRows, hoursInfo, snapshot.revshareMap);
   const urlRows = filterRowsForWindow_(filteredRows, hoursInfo, window);
   const urlSummary = buildUrlSummary_(urlRows, snapshot.revshareMap);
+  const detailed = buildDetailedAnalysis_(filteredRows, hoursInfo, snapshot.revshareMap);
 
   var savedControls = getDistributionControlsConfig_(operationName, trafficType);
   var distributionParams = {};
@@ -230,6 +231,7 @@ function getDashboardData(params) {
     },
     site: siteSummary,
     url: urlSummary,
+    detailed: detailed,
     distribution: distribution
   };
 }
@@ -246,6 +248,11 @@ function buildEmptyDashboardResponse_() {
       rows: [],
       totals: null,
       windowLabel: ''
+    },
+    detailed: {
+      hours: [],
+      urls: [],
+      sites: []
     },
     distribution: buildEmptyDistribution_()
   };
@@ -587,6 +594,259 @@ function buildUrlSummary_(rows, revshareMap) {
     rows: rowsOut,
     totals: totalsRow,
     windowLabel: ''
+  };
+}
+
+function buildDetailedAnalysis_(rows, hoursInfo, revshareMap) {
+  if (!rows || !rows.length) {
+    return {
+      hours: [],
+      urls: [],
+      sites: []
+    };
+  }
+  var allHours = hoursInfo && hoursInfo.allHours ? hoursInfo.allHours.slice() : [];
+  var latestHour = hoursInfo && hoursInfo.latestHour != null ? hoursInfo.latestHour : null;
+  var hourList = [];
+  var hourSet = {};
+  allHours.forEach(function (timestamp) {
+    if (latestHour != null && timestamp >= latestHour) {
+      return;
+    }
+    hourList.push(timestamp);
+    hourSet[timestamp] = true;
+  });
+  if (!hourList.length && allHours.length) {
+    hourList = allHours.slice();
+    hourSet = {};
+    hourList.forEach(function (timestamp) {
+      hourSet[timestamp] = true;
+    });
+  }
+  if (!hourList.length) {
+    return {
+      hours: [],
+      urls: [],
+      sites: []
+    };
+  }
+
+  var siteMap = {};
+  var urlMap = {};
+
+  rows.forEach(function (row) {
+    if (latestHour != null && row.timestamp >= latestHour) return;
+    if (!hourSet[row.timestamp]) return;
+    var revshare = toNumber_(revshareMap[row.site] || 0) / 100;
+    var adjustedRevenue = row.revenue * (1 - revshare);
+    var hourKey = row.timestamp;
+
+    if (!siteMap[row.site]) {
+      siteMap[row.site] = {
+        site: row.site,
+        totals: {
+          sessions: 0,
+          revenue: 0,
+          mobTopRequests: 0,
+          mobTopCoverageWeighted: 0,
+          mobTopAdjustedEcpmWeighted: 0
+        },
+        hours: {}
+      };
+    }
+    var siteData = siteMap[row.site];
+    if (!siteData.hours[hourKey]) {
+      siteData.hours[hourKey] = {
+        sessions: 0,
+        revenue: 0,
+        mobTopRequests: 0,
+        mobTopCoverageWeighted: 0,
+        mobTopAdjustedEcpmWeighted: 0
+      };
+    }
+    var siteHour = siteData.hours[hourKey];
+    siteData.totals.revenue += adjustedRevenue;
+    siteHour.revenue += adjustedRevenue;
+    if (row.isInterstitial) {
+      siteData.totals.sessions += row.requests;
+      siteHour.sessions += row.requests;
+    }
+    if (row.block && /mob_top/i.test(row.block)) {
+      var coverageRatio = row.coverage > 1 ? row.coverage / 100 : row.coverage;
+      var adjustedEcpm = row.ecpm * (1 - revshare);
+      siteData.totals.mobTopRequests += row.requests;
+      siteData.totals.mobTopCoverageWeighted += coverageRatio * row.requests;
+      siteData.totals.mobTopAdjustedEcpmWeighted += adjustedEcpm * row.requests;
+      siteHour.mobTopRequests += row.requests;
+      siteHour.mobTopCoverageWeighted += coverageRatio * row.requests;
+      siteHour.mobTopAdjustedEcpmWeighted += adjustedEcpm * row.requests;
+    }
+
+    var urlKey = row.normUrl || row.url;
+    if (!urlMap[urlKey]) {
+      urlMap[urlKey] = {
+        key: urlKey,
+        url: String(row.url || '').trim(),
+        site: row.site,
+        totals: {
+          sessions: 0,
+          revenue: 0
+        },
+        hours: {},
+        hourBlocks: {},
+        mobTopTotals: {}
+      };
+    }
+    var urlData = urlMap[urlKey];
+    if (!urlData.hours[hourKey]) {
+      urlData.hours[hourKey] = {
+        sessions: 0,
+        revenue: 0
+      };
+    }
+    urlData.totals.revenue += adjustedRevenue;
+    urlData.hours[hourKey].revenue += adjustedRevenue;
+    if (row.isInterstitial) {
+      urlData.totals.sessions += row.requests;
+      urlData.hours[hourKey].sessions += row.requests;
+    }
+    if (row.block && /mob_top/i.test(row.block)) {
+      var blockKey = String(row.block || '').trim();
+      if (!urlData.hourBlocks[hourKey]) {
+        urlData.hourBlocks[hourKey] = {};
+      }
+      if (!urlData.hourBlocks[hourKey][blockKey]) {
+        urlData.hourBlocks[hourKey][blockKey] = {
+          requests: 0,
+          coverageWeighted: 0,
+          adjustedEcpmWeighted: 0
+        };
+      }
+      var hourBlock = urlData.hourBlocks[hourKey][blockKey];
+      var coverageRatioUrl = row.coverage > 1 ? row.coverage / 100 : row.coverage;
+      var adjustedEcpmUrl = row.ecpm * (1 - revshare);
+      hourBlock.requests += row.requests;
+      hourBlock.coverageWeighted += coverageRatioUrl * row.requests;
+      hourBlock.adjustedEcpmWeighted += adjustedEcpmUrl * row.requests;
+
+      if (!urlData.mobTopTotals[blockKey]) {
+        urlData.mobTopTotals[blockKey] = {
+          requests: 0,
+          coverageWeighted: 0,
+          adjustedEcpmWeighted: 0
+        };
+      }
+      var totalBlock = urlData.mobTopTotals[blockKey];
+      totalBlock.requests += row.requests;
+      totalBlock.coverageWeighted += coverageRatioUrl * row.requests;
+      totalBlock.adjustedEcpmWeighted += adjustedEcpmUrl * row.requests;
+    }
+  });
+
+  var hourDescriptors = hourList.map(function (timestamp) {
+    return {
+      key: timestamp,
+      label: formatHourFromTimestamp_(timestamp)
+    };
+  });
+
+  var siteRows = Object.keys(siteMap).map(function (siteKey) {
+    var siteData = siteMap[siteKey];
+    var totalsCoverageRatio = siteData.totals.mobTopRequests ? siteData.totals.mobTopCoverageWeighted / siteData.totals.mobTopRequests : 0;
+    var totalsEcpm = siteData.totals.mobTopRequests ? siteData.totals.mobTopAdjustedEcpmWeighted / siteData.totals.mobTopRequests : 0;
+    var totals = {
+      sessions: siteData.totals.sessions,
+      revenue: siteData.totals.revenue,
+      rps: computeRps_(siteData.totals.revenue, siteData.totals.sessions),
+      coverage: totalsCoverageRatio * 100,
+      ecpm: totalsEcpm,
+      effectiveEcpm: totalsEcpm * totalsCoverageRatio,
+      mobTopRequests: siteData.totals.mobTopRequests,
+      mobTopCoverageWeighted: siteData.totals.mobTopCoverageWeighted,
+      mobTopAdjustedEcpmWeighted: siteData.totals.mobTopAdjustedEcpmWeighted
+    };
+    var hourly = {};
+    hourList.forEach(function (timestamp) {
+      var hourData = siteData.hours[timestamp] || {
+        sessions: 0,
+        revenue: 0,
+        mobTopRequests: 0,
+        mobTopCoverageWeighted: 0,
+        mobTopAdjustedEcpmWeighted: 0
+      };
+      var coverageRatio = hourData.mobTopRequests ? hourData.mobTopCoverageWeighted / hourData.mobTopRequests : 0;
+      var ecpm = hourData.mobTopRequests ? hourData.mobTopAdjustedEcpmWeighted / hourData.mobTopRequests : 0;
+      hourly[timestamp] = {
+        sessions: hourData.sessions,
+        revenue: hourData.revenue,
+        rps: computeRps_(hourData.revenue, hourData.sessions),
+        coverage: coverageRatio * 100,
+        ecpm: ecpm,
+        effectiveEcpm: ecpm * coverageRatio,
+        mobTopRequests: hourData.mobTopRequests,
+        mobTopCoverageWeighted: hourData.mobTopCoverageWeighted,
+        mobTopAdjustedEcpmWeighted: hourData.mobTopAdjustedEcpmWeighted
+      };
+    });
+    return {
+      key: siteKey,
+      site: siteKey,
+      totals: totals,
+      hourly: hourly
+    };
+  }).sort(function (a, b) {
+    return b.totals.revenue - a.totals.revenue;
+  });
+
+  var urlRows = Object.keys(urlMap).map(function (urlKey) {
+    var urlData = urlMap[urlKey];
+    var selectedBlock = selectMobTopBlock_(urlData.mobTopTotals);
+    var totalsCoverageRatio = selectedBlock.requests ? selectedBlock.coverageWeighted / selectedBlock.requests : 0;
+    var totalsEcpm = selectedBlock.requests ? selectedBlock.adjustedEcpmWeighted / selectedBlock.requests : 0;
+    var totals = {
+      sessions: urlData.totals.sessions,
+      revenue: urlData.totals.revenue,
+      rps: computeRps_(urlData.totals.revenue, urlData.totals.sessions),
+      coverage: totalsCoverageRatio * 100,
+      ecpm: totalsEcpm,
+      effectiveEcpm: totalsEcpm * totalsCoverageRatio,
+      mobTopRequests: selectedBlock.requests,
+      mobTopCoverageWeighted: selectedBlock.coverageWeighted,
+      mobTopAdjustedEcpmWeighted: selectedBlock.adjustedEcpmWeighted
+    };
+    var hourly = {};
+    hourList.forEach(function (timestamp) {
+      var base = urlData.hours[timestamp] || { sessions: 0, revenue: 0 };
+      var block = selectMobTopBlock_(urlData.hourBlocks[timestamp] || {});
+      var coverageRatio = block.requests ? block.coverageWeighted / block.requests : 0;
+      var ecpm = block.requests ? block.adjustedEcpmWeighted / block.requests : 0;
+      hourly[timestamp] = {
+        sessions: base.sessions,
+        revenue: base.revenue,
+        rps: computeRps_(base.revenue, base.sessions),
+        coverage: coverageRatio * 100,
+        ecpm: ecpm,
+        effectiveEcpm: ecpm * coverageRatio,
+        mobTopRequests: block.requests,
+        mobTopCoverageWeighted: block.coverageWeighted,
+        mobTopAdjustedEcpmWeighted: block.adjustedEcpmWeighted
+      };
+    });
+    return {
+      key: urlKey,
+      url: urlData.url,
+      site: urlData.site,
+      totals: totals,
+      hourly: hourly
+    };
+  }).sort(function (a, b) {
+    return b.totals.revenue - a.totals.revenue;
+  });
+
+  return {
+    hours: hourDescriptors,
+    urls: urlRows,
+    sites: siteRows
   };
 }
 

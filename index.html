@@ -5,6 +5,7 @@
   <title>Dashboard de Retenção</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
     body {
@@ -310,6 +311,15 @@
 
   <script>
     (function () {
+      var DETAILED_METRICS = [
+        { key: 'sessions', label: 'Sessões', type: 'number' },
+        { key: 'revenue', label: 'Receita ($)', type: 'currency' },
+        { key: 'rps', label: 'RPS ($)', type: 'currency' },
+        { key: 'coverage', label: 'Cobertura (%)', type: 'percent' },
+        { key: 'ecpm', label: 'eCPM ($)', type: 'currency' },
+        { key: 'effectiveEcpm', label: 'eCPM Efetivo ($)', type: 'currency' }
+      ];
+      var DETAILED_COLORS = ['#38bdf8', '#34d399', '#f97316', '#a855f7', '#f43f5e', '#facc15', '#22d3ee', '#fb7185', '#4ade80', '#60a5fa'];
       var state = {
         config: {
           operations: [],
@@ -345,6 +355,13 @@
           urlSearch: '',
           dirty: false
         },
+        detailed: {
+          mode: 'url',
+          selected: [],
+          metrics: ['revenue'],
+          search: ''
+        },
+        detailedChart: null,
         analysis: null
       };
 
@@ -834,7 +851,8 @@
         var siteRows = data && data.site && data.site.rows ? data.site.rows.length : 0;
         var urlRows = data && data.url && data.url.rows ? data.url.rows.length : 0;
         var distributionRows = data && data.distribution && data.distribution.sites ? data.distribution.sites.length : 0;
-        if (!data || (!siteRows && !urlRows && !distributionRows)) {
+        var detailedRows = data && data.detailed && data.detailed.hours && data.detailed.hours.length && ((data.detailed.urls && data.detailed.urls.length) || (data.detailed.sites && data.detailed.sites.length)) ? 1 : 0;
+        if (!data || (!siteRows && !urlRows && !distributionRows && !detailedRows)) {
           wrapper.innerHTML = '<div class="card rounded-2xl p-6 text-center text-slate-400">Nenhum dado encontrado para os filtros selecionados.</div>';
           document.getElementById('latest-info').textContent = '';
           return;
@@ -842,10 +860,20 @@
         if (data && data.distribution) {
           syncDistributionState(data.distribution);
         }
+        ensureActiveAnalysisTab(data);
+        if (state.analysisTab !== 'detailed' && state.detailedChart) {
+          state.detailedChart.destroy();
+          state.detailedChart = null;
+        }
         wrapper.appendChild(renderAnalysisTabs(data));
         if (state.analysisTab === 'distribution') {
           document.getElementById('latest-info').textContent = buildDistributionInfo(data && data.distribution);
           renderDistributionView(data && data.distribution, wrapper);
+          return;
+        }
+        if (state.analysisTab === 'detailed') {
+          document.getElementById('latest-info').textContent = buildDetailedInfo(data && data.detailed, data && data.filters);
+          renderDetailedView(data && data.detailed, wrapper);
           return;
         }
         if (siteRows || urlRows) {
@@ -868,14 +896,39 @@
         }
       }
 
+      function ensureActiveAnalysisTab(data) {
+        var hasOverview = data && ((data.site && data.site.rows && data.site.rows.length) || (data.url && data.url.rows && data.url.rows.length));
+        var hasDetailed = data && data.detailed && data.detailed.hours && data.detailed.hours.length && ((data.detailed.urls && data.detailed.urls.length) || (data.detailed.sites && data.detailed.sites.length));
+        var hasDistribution = data && data.distribution && data.distribution.sites && data.distribution.sites.length;
+        var current = state.analysisTab;
+        var available = {
+          overview: !!hasOverview,
+          detailed: !!hasDetailed,
+          distribution: !!hasDistribution
+        };
+        if (!available[current]) {
+          if (available.overview) {
+            state.analysisTab = 'overview';
+          } else if (available.detailed) {
+            state.analysisTab = 'detailed';
+          } else if (available.distribution) {
+            state.analysisTab = 'distribution';
+          } else {
+            state.analysisTab = 'overview';
+          }
+        }
+      }
+
       function renderAnalysisTabs(data) {
         var tabsCard = document.createElement('div');
         tabsCard.className = 'card rounded-2xl p-2 flex flex-wrap gap-2';
         var hasOverview = data && data.site && data.site.rows && data.site.rows.length;
         hasOverview = hasOverview || (data && data.url && data.url.rows && data.url.rows.length);
         var hasDistribution = data && data.distribution && data.distribution.sites && data.distribution.sites.length;
+        var hasDetailed = data && data.detailed && data.detailed.hours && data.detailed.hours.length && ((data.detailed.urls && data.detailed.urls.length) || (data.detailed.sites && data.detailed.sites.length));
         var tabs = [
           { id: 'overview', label: 'Resumo de desempenho', available: hasOverview },
+          { id: 'detailed', label: 'Análise detalhada', available: hasDetailed },
           { id: 'distribution', label: 'Distribuição inteligente', available: hasDistribution }
         ];
         tabs.forEach(function (tab) {
@@ -918,6 +971,21 @@
         return infoParts.join(' • ');
       }
 
+      function buildDetailedInfo(detailed, filters) {
+        if (!detailed) return '';
+        var infoParts = [];
+        if (filters && filters.latestHour) {
+          infoParts.push('Última hora descartada: ' + filters.latestHour);
+        }
+        if (detailed.hours && detailed.hours.length) {
+          var labels = detailed.hours.map(function (hour) { return hour.label; });
+          if (labels.length) {
+            infoParts.push('Horas disponíveis: ' + labels.join(', '));
+          }
+        }
+        return infoParts.join(' • ');
+      }
+
       function buildDistributionInfo(distribution) {
         if (!distribution) return '';
         var infoParts = [];
@@ -928,6 +996,638 @@
           infoParts.push('Horas base: ' + distribution.hours.join(', '));
         }
         return infoParts.join(' • ');
+      }
+
+      function renderDetailedView(detailed, wrapper) {
+        if (!detailed) {
+          var empty = document.createElement('div');
+          empty.className = 'card rounded-2xl p-6 text-center text-slate-400';
+          empty.textContent = 'Sem dados detalhados disponíveis.';
+          wrapper.appendChild(empty);
+          return;
+        }
+        ensureDetailedState(detailed);
+        wrapper.appendChild(renderDetailedControlsCard(detailed));
+        var selectedItems = getDetailedSelectedItems(detailed);
+        wrapper.appendChild(renderDetailedSummaryCard(detailed, selectedItems));
+        if (!selectedItems.length) {
+          return;
+        }
+        wrapper.appendChild(renderDetailedChartCard(detailed, selectedItems));
+        wrapper.appendChild(renderDetailedTimelineCard(detailed, selectedItems));
+      }
+
+      function renderDetailedControlsCard(detailed) {
+        var card = document.createElement('div');
+        card.className = 'card rounded-2xl p-6 space-y-4';
+        var header = document.createElement('div');
+        header.className = 'flex items-center justify-between flex-wrap gap-3';
+        var title = document.createElement('h3');
+        title.className = 'text-lg font-semibold text-slate-100';
+        title.textContent = 'Controles da análise detalhada';
+        header.appendChild(title);
+        var count = document.createElement('span');
+        count.className = 'text-xs text-slate-400';
+        count.textContent = (state.detailed.mode === 'url' ? 'URLs' : 'Sites') + ' selecionados: ' + state.detailed.selected.length;
+        header.appendChild(count);
+        card.appendChild(header);
+
+        var toggleRow = document.createElement('div');
+        toggleRow.className = 'inline-flex rounded-xl pill p-1';
+        [
+          { key: 'url', label: 'URLs' },
+          { key: 'site', label: 'Sites' }
+        ].forEach(function (option) {
+          var button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'px-4 py-2 rounded-lg font-semibold transition-colors';
+          if (state.detailed.mode === option.key) {
+            button.classList.add('bg-sky-600', 'text-white');
+          } else {
+            button.classList.add('text-slate-300', 'hover:text-white');
+          }
+          button.textContent = option.label;
+          button.addEventListener('click', function (ev) {
+            ev.preventDefault();
+            setDetailedMode(option.key);
+          });
+          toggleRow.appendChild(button);
+        });
+        card.appendChild(toggleRow);
+
+        var searchWrapper = document.createElement('div');
+        searchWrapper.className = 'flex flex-col gap-2';
+        var searchLabel = document.createElement('label');
+        searchLabel.className = 'text-sm text-slate-300';
+        searchLabel.textContent = 'Buscar ' + (state.detailed.mode === 'url' ? 'URLs' : 'sites');
+        searchWrapper.appendChild(searchLabel);
+        var searchInput = document.createElement('input');
+        searchInput.type = 'search';
+        searchInput.className = 'pill px-3 py-2 rounded-lg bg-slate-900/40 text-sm text-slate-100';
+        searchInput.placeholder = 'Digite para filtrar...';
+        searchInput.value = state.detailed.search || '';
+        searchInput.addEventListener('input', function (ev) {
+          updateDetailedSearch(ev.target.value || '');
+        });
+        searchWrapper.appendChild(searchInput);
+        card.appendChild(searchWrapper);
+
+        var listContainer = document.createElement('div');
+        listContainer.className = 'scroll-list-15 space-y-2 pr-1';
+        var items = getDetailedItems(detailed);
+        var filtered = items;
+        if (state.detailed.search) {
+          var searchLower = state.detailed.search.toLowerCase();
+          filtered = items.filter(function (item) {
+            var primary = (state.detailed.mode === 'url' ? item.url : item.site) || '';
+            var secondary = state.detailed.mode === 'url' ? (item.site || '') : '';
+            return primary.toLowerCase().indexOf(searchLower) !== -1 || secondary.toLowerCase().indexOf(searchLower) !== -1;
+          });
+        }
+        if (!filtered.length) {
+          var empty = document.createElement('div');
+          empty.className = 'text-sm text-slate-400';
+          empty.textContent = items.length ? 'Nenhum item encontrado com o filtro atual.' : 'Nenhum item disponível para análise.';
+          listContainer.appendChild(empty);
+        } else {
+          filtered.forEach(function (item) {
+            var isChecked = state.detailed.selected.indexOf(item.key) !== -1;
+            var option = document.createElement('label');
+            option.className = 'flex items-center justify-between gap-3 px-3 py-2 rounded-xl border transition-all cursor-pointer';
+            option.classList.add('border-slate-700/60', 'bg-slate-900/30');
+            if (isChecked) {
+              option.classList.add('border-sky-500/60', 'bg-sky-500/10');
+            }
+            var textWrapper = document.createElement('div');
+            textWrapper.className = 'flex flex-col';
+            var titleLine = document.createElement('span');
+            titleLine.className = 'text-sm font-semibold text-slate-100 break-all';
+            titleLine.textContent = state.detailed.mode === 'url' ? item.url : item.site;
+            textWrapper.appendChild(titleLine);
+            if (state.detailed.mode === 'url') {
+              var subtitle = document.createElement('span');
+              subtitle.className = 'text-xs text-slate-400';
+              subtitle.textContent = item.site || '';
+              textWrapper.appendChild(subtitle);
+            }
+            var metricLine = document.createElement('span');
+            metricLine.className = 'text-xs text-slate-400';
+            metricLine.textContent = 'Sessões: ' + formatNumber(item.totals.sessions || 0) + ' • eCPM Efetivo: ' + formatCurrency(item.totals.effectiveEcpm || 0);
+            textWrapper.appendChild(metricLine);
+            option.appendChild(textWrapper);
+
+            var checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.checked = isChecked;
+            checkbox.className = 'h-4 w-4 text-sky-500';
+            checkbox.addEventListener('change', function () {
+              toggleDetailedSelection(item.key);
+            });
+            option.appendChild(checkbox);
+            option.addEventListener('click', function (ev) {
+              if (ev.target !== checkbox) {
+                ev.preventDefault();
+                checkbox.click();
+              }
+            });
+            listContainer.appendChild(option);
+          });
+        }
+        card.appendChild(listContainer);
+
+        var metricsWrapper = document.createElement('div');
+        metricsWrapper.className = 'space-y-2';
+        var metricsLabel = document.createElement('p');
+        metricsLabel.className = 'text-sm text-slate-300';
+        metricsLabel.textContent = 'Métricas exibidas no gráfico';
+        metricsWrapper.appendChild(metricsLabel);
+        var metricsGrid = document.createElement('div');
+        metricsGrid.className = 'flex flex-wrap gap-2';
+        DETAILED_METRICS.forEach(function (metric) {
+          var metricLabel = document.createElement('label');
+          metricLabel.className = 'inline-flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-all';
+          metricLabel.classList.add('border-slate-700/60', 'bg-slate-900/30');
+          var isSelected = state.detailed.metrics.indexOf(metric.key) !== -1;
+          if (isSelected) {
+            metricLabel.classList.add('border-sky-500/60', 'bg-sky-500/10');
+          }
+          var metricInput = document.createElement('input');
+          metricInput.type = 'checkbox';
+          metricInput.checked = isSelected;
+          metricInput.addEventListener('change', function () {
+            toggleDetailedMetric(metric.key, metricInput.checked);
+          });
+          var metricName = document.createElement('span');
+          metricName.className = 'text-xs text-slate-200';
+          metricName.textContent = metric.label;
+          metricLabel.appendChild(metricInput);
+          metricLabel.appendChild(metricName);
+          metricsGrid.appendChild(metricLabel);
+        });
+        metricsWrapper.appendChild(metricsGrid);
+        card.appendChild(metricsWrapper);
+
+        return card;
+      }
+
+      function getDetailedItems(detailed) {
+        if (!detailed) return [];
+        return state.detailed.mode === 'url' ? (detailed.urls || []) : (detailed.sites || []);
+      }
+
+      function getDetailedSelectedItems(detailed) {
+        var items = getDetailedItems(detailed);
+        var selectedSet = {};
+        (state.detailed.selected || []).forEach(function (key) { selectedSet[key] = true; });
+        return items.filter(function (item) {
+          return selectedSet[item.key];
+        });
+      }
+
+      function ensureDetailedState(detailed) {
+        if (!state.detailed) {
+          state.detailed = { mode: 'url', selected: [], metrics: ['revenue'], search: '' };
+        }
+        var hasUrls = detailed && detailed.urls && detailed.urls.length;
+        var hasSites = detailed && detailed.sites && detailed.sites.length;
+        if (state.detailed.mode === 'url' && !hasUrls && hasSites) {
+          state.detailed.mode = 'site';
+        } else if (state.detailed.mode === 'site' && !hasSites && hasUrls) {
+          state.detailed.mode = 'url';
+        }
+        var items = getDetailedItems(detailed);
+        var validKeys = {};
+        items.forEach(function (item) { validKeys[item.key] = true; });
+        state.detailed.selected = (state.detailed.selected || []).filter(function (key) { return validKeys[key]; });
+        if (!state.detailed.selected.length && items.length) {
+          var limit = Math.min(items.length, state.detailed.mode === 'url' ? 5 : 3);
+          var defaults = [];
+          for (var i = 0; i < limit; i++) {
+            defaults.push(items[i].key);
+          }
+          state.detailed.selected = defaults;
+        }
+        if (!state.detailed.metrics || !state.detailed.metrics.length) {
+          state.detailed.metrics = ['revenue'];
+        }
+      }
+
+      function setDetailedMode(mode) {
+        if (state.detailed.mode === mode) return;
+        state.detailed.mode = mode;
+        ensureDetailedState(state.analysis && state.analysis.detailed);
+        renderAnalysis();
+      }
+
+      function updateDetailedSearch(value) {
+        state.detailed.search = value || '';
+        renderAnalysis();
+      }
+
+      function toggleDetailedSelection(key) {
+        var index = state.detailed.selected.indexOf(key);
+        if (index === -1) {
+          state.detailed.selected.push(key);
+        } else {
+          state.detailed.selected.splice(index, 1);
+        }
+        renderAnalysis();
+      }
+
+      function toggleDetailedMetric(metricKey, isChecked) {
+        var metrics = state.detailed.metrics.slice();
+        var index = metrics.indexOf(metricKey);
+        if (isChecked && index === -1) {
+          metrics.push(metricKey);
+        } else if (!isChecked && index !== -1) {
+          metrics.splice(index, 1);
+        }
+        if (!metrics.length) {
+          return renderAnalysis();
+        }
+        state.detailed.metrics = metrics;
+        renderAnalysis();
+      }
+
+      function renderDetailedSummaryCard(detailed, items) {
+        var card = document.createElement('div');
+        card.className = 'card rounded-2xl p-6 space-y-4';
+        var header = document.createElement('div');
+        header.className = 'flex items-center justify-between flex-wrap gap-3';
+        var title = document.createElement('h3');
+        title.className = 'text-lg font-semibold text-slate-100';
+        title.textContent = 'Resumo das seleções';
+        header.appendChild(title);
+        if (items.length) {
+          var hint = document.createElement('span');
+          hint.className = 'text-xs text-slate-400';
+          hint.textContent = 'Valores ajustados por RevShare';
+          header.appendChild(hint);
+        }
+        card.appendChild(header);
+        if (!items.length) {
+          var empty = document.createElement('div');
+          empty.className = 'text-sm text-slate-400';
+          empty.textContent = 'Selecione pelo menos uma ' + (state.detailed.mode === 'url' ? 'URL' : 'site') + ' para analisar.';
+          card.appendChild(empty);
+          return card;
+        }
+        var table = document.createElement('div');
+        table.className = 'overflow-auto';
+        var html = '';
+        html += '<table class="w-full text-sm min-w-max">';
+        html += '<thead class="text-slate-200">';
+        if (state.detailed.mode === 'url') {
+          html += '<tr>' +
+            '<th class="px-3 py-2 text-left font-semibold">URL</th>' +
+            '<th class="px-3 py-2 text-left font-semibold">Site</th>' +
+            '<th class="px-3 py-2 text-right font-semibold">Sessões</th>' +
+            '<th class="px-3 py-2 text-right font-semibold">Receita ($)</th>' +
+            '<th class="px-3 py-2 text-right font-semibold">RPS ($)</th>' +
+            '<th class="px-3 py-2 text-right font-semibold">Cobertura (%)</th>' +
+            '<th class="px-3 py-2 text-right font-semibold">eCPM ($)</th>' +
+            '<th class="px-3 py-2 text-right font-semibold">eCPM Efetivo ($)</th>' +
+            '</tr>';
+        } else {
+          html += '<tr>' +
+            '<th class="px-3 py-2 text-left font-semibold">Site</th>' +
+            '<th class="px-3 py-2 text-right font-semibold">Sessões</th>' +
+            '<th class="px-3 py-2 text-right font-semibold">Receita ($)</th>' +
+            '<th class="px-3 py-2 text-right font-semibold">RPS ($)</th>' +
+            '<th class="px-3 py-2 text-right font-semibold">Cobertura (%)</th>' +
+            '<th class="px-3 py-2 text-right font-semibold">eCPM ($)</th>' +
+            '<th class="px-3 py-2 text-right font-semibold">eCPM Efetivo ($)</th>' +
+            '</tr>';
+        }
+        html += '</thead><tbody class="divide-y divide-slate-800/60">';
+        items.forEach(function (item) {
+          var totals = item.totals || {};
+          if (state.detailed.mode === 'url') {
+            html += '<tr>' +
+              '<td class="px-3 py-2 text-sky-300 break-all">' + escapeHtml(item.url || '') + '</td>' +
+              '<td class="px-3 py-2 text-slate-300">' + escapeHtml(item.site || '') + '</td>' +
+              '<td class="px-3 py-2 text-right">' + formatNumber(totals.sessions) + '</td>' +
+              '<td class="px-3 py-2 text-right">' + formatCurrency(totals.revenue) + '</td>' +
+              '<td class="px-3 py-2 text-right">' + formatCurrency(totals.rps) + '</td>' +
+              '<td class="px-3 py-2 text-right">' + formatPercent(totals.coverage) + '</td>' +
+              '<td class="px-3 py-2 text-right">' + formatCurrency(totals.ecpm) + '</td>' +
+              '<td class="px-3 py-2 text-right">' + formatCurrency(totals.effectiveEcpm) + '</td>' +
+              '</tr>';
+          } else {
+            html += '<tr>' +
+              '<td class="px-3 py-2 text-slate-200 font-medium">' + escapeHtml(item.site || '') + '</td>' +
+              '<td class="px-3 py-2 text-right">' + formatNumber(totals.sessions) + '</td>' +
+              '<td class="px-3 py-2 text-right">' + formatCurrency(totals.revenue) + '</td>' +
+              '<td class="px-3 py-2 text-right">' + formatCurrency(totals.rps) + '</td>' +
+              '<td class="px-3 py-2 text-right">' + formatPercent(totals.coverage) + '</td>' +
+              '<td class="px-3 py-2 text-right">' + formatCurrency(totals.ecpm) + '</td>' +
+              '<td class="px-3 py-2 text-right">' + formatCurrency(totals.effectiveEcpm) + '</td>' +
+              '</tr>';
+          }
+        });
+        var combined = computeDetailedTotals(items);
+        html += '<tr class="bg-slate-900/60 text-slate-100 font-semibold">' +
+          (state.detailed.mode === 'url' ? '<td class="px-3 py-2">Total selecionado</td><td class="px-3 py-2"></td>' : '<td class="px-3 py-2">Total selecionado</td>') +
+          '<td class="px-3 py-2 text-right">' + formatNumber(combined.sessions) + '</td>' +
+          '<td class="px-3 py-2 text-right">' + formatCurrency(combined.revenue) + '</td>' +
+          '<td class="px-3 py-2 text-right">' + formatCurrency(combined.rps) + '</td>' +
+          '<td class="px-3 py-2 text-right">' + formatPercent(combined.coverage) + '</td>' +
+          '<td class="px-3 py-2 text-right">' + formatCurrency(combined.ecpm) + '</td>' +
+          '<td class="px-3 py-2 text-right">' + formatCurrency(combined.effectiveEcpm) + '</td>' +
+          '</tr>';
+        html += '</tbody></table>';
+        table.innerHTML = html;
+        card.appendChild(table);
+        return card;
+      }
+
+      function computeDetailedTotals(items) {
+        var totals = {
+          sessions: 0,
+          revenue: 0,
+          mobTopRequests: 0,
+          mobTopCoverageWeighted: 0,
+          mobTopAdjustedEcpmWeighted: 0
+        };
+        items.forEach(function (item) {
+          var data = item.totals || {};
+          totals.sessions += Number(data.sessions || 0);
+          totals.revenue += Number(data.revenue || 0);
+          totals.mobTopRequests += Number(data.mobTopRequests || 0);
+          totals.mobTopCoverageWeighted += Number(data.mobTopCoverageWeighted || 0);
+          totals.mobTopAdjustedEcpmWeighted += Number(data.mobTopAdjustedEcpmWeighted || 0);
+        });
+        var coverageRatio = totals.mobTopRequests ? totals.mobTopCoverageWeighted / totals.mobTopRequests : 0;
+        var ecpm = totals.mobTopRequests ? totals.mobTopAdjustedEcpmWeighted / totals.mobTopRequests : 0;
+        return {
+          sessions: totals.sessions,
+          revenue: totals.revenue,
+          rps: computeRpsValue(totals.revenue, totals.sessions),
+          coverage: coverageRatio * 100,
+          ecpm: ecpm,
+          effectiveEcpm: ecpm * coverageRatio
+        };
+      }
+
+      function renderDetailedChartCard(detailed, items) {
+        var card = document.createElement('div');
+        card.className = 'card rounded-2xl p-6 space-y-4';
+        var header = document.createElement('div');
+        header.className = 'flex items-center justify-between flex-wrap gap-3';
+        var title = document.createElement('h3');
+        title.className = 'text-lg font-semibold text-slate-100';
+        title.textContent = 'Série temporal das métricas selecionadas';
+        header.appendChild(title);
+        var legend = document.createElement('span');
+        legend.className = 'text-xs text-slate-400';
+        legend.textContent = 'Cada linha representa a métrica escolhida por item';
+        header.appendChild(legend);
+        card.appendChild(header);
+        if (!detailed.hours || !detailed.hours.length) {
+          var empty = document.createElement('div');
+          empty.className = 'text-sm text-slate-400';
+          empty.textContent = 'Sem recortes horários suficientes para gerar o gráfico.';
+          card.appendChild(empty);
+          return card;
+        }
+        var canvas = document.createElement('canvas');
+        canvas.style.height = '360px';
+        card.appendChild(canvas);
+        updateDetailedChart(canvas, detailed, items);
+        return card;
+      }
+
+      function updateDetailedChart(canvas, detailed, items) {
+        if (state.detailedChart) {
+          state.detailedChart.destroy();
+          state.detailedChart = null;
+        }
+        if (!items.length || !detailed.hours || !detailed.hours.length) {
+          return;
+        }
+        var metricKeys = state.detailed.metrics && state.detailed.metrics.length ? state.detailed.metrics.slice() : ['revenue'];
+        var labels = detailed.hours.map(function (hour) { return hour.label; });
+        var datasets = [];
+        items.forEach(function (item, itemIndex) {
+          metricKeys.forEach(function (metricKey, metricIndex) {
+            var colorIndex = (itemIndex * metricKeys.length + metricIndex) % DETAILED_COLORS.length;
+            var color = DETAILED_COLORS[colorIndex];
+            var hourValues = detailed.hours.map(function (hour) {
+              var data = getDetailedHourData(item, hour.key);
+              return Number(data[metricKey] || 0);
+            });
+            datasets.push({
+              label: buildDetailedDatasetLabel(item, metricKey),
+              data: hourValues,
+              borderColor: color,
+              backgroundColor: hexToRgba(color, 0.25),
+              borderWidth: 2,
+              tension: 0.25,
+              fill: false,
+              spanGaps: true,
+              detailedMetric: metricKey
+            });
+          });
+        });
+        if (!datasets.length) {
+          return;
+        }
+        var context = canvas.getContext('2d');
+        state.detailedChart = new Chart(context, {
+          type: 'line',
+          data: { labels: labels, datasets: datasets },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                labels: {
+                  color: '#cbd5f5',
+                  boxWidth: 12
+                }
+              },
+              tooltip: {
+                callbacks: {
+                  label: function (context) {
+                    var metric = context.dataset.detailedMetric;
+                    var value = context.parsed.y;
+                    return context.dataset.label + ': ' + formatDetailedMetricValue(metric, value);
+                  }
+                }
+              }
+            },
+            scales: {
+              x: {
+                ticks: { color: '#94a3b8' },
+                grid: { color: 'rgba(148, 163, 184, 0.15)' }
+              },
+              y: {
+                ticks: {
+                  color: '#94a3b8',
+                  callback: function (value) {
+                    return Number(value || 0).toLocaleString('pt-BR', { maximumFractionDigits: 2 });
+                  }
+                },
+                grid: { color: 'rgba(148, 163, 184, 0.12)' }
+              }
+            }
+          }
+        });
+      }
+
+      function buildDetailedDatasetLabel(item, metricKey) {
+        var meta = getDetailedMetricMeta(metricKey);
+        var base = meta ? meta.label : metricKey;
+        var name = state.detailed.mode === 'url' ? (item.url || '') : (item.site || '');
+        return (name || 'Item') + ' • ' + base;
+      }
+
+      function getDetailedMetricMeta(metricKey) {
+        for (var i = 0; i < DETAILED_METRICS.length; i++) {
+          if (DETAILED_METRICS[i].key === metricKey) {
+            return DETAILED_METRICS[i];
+          }
+        }
+        return null;
+      }
+
+      function formatDetailedMetricValue(metricKey, value) {
+        var meta = getDetailedMetricMeta(metricKey);
+        if (!meta) {
+          return Number(value || 0).toLocaleString('pt-BR', { maximumFractionDigits: 2 });
+        }
+        if (meta.type === 'currency') {
+          return formatCurrency(value);
+        }
+        if (meta.type === 'percent') {
+          return formatPercent(value);
+        }
+        return Number(value || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 });
+      }
+
+      function hexToRgba(hex, alpha) {
+        if (!hex) return 'rgba(148, 163, 184, ' + (alpha != null ? alpha : 1) + ')';
+        var sanitized = hex.replace('#', '');
+        if (sanitized.length === 3) {
+          sanitized = sanitized.split('').map(function (char) { return char + char; }).join('');
+        }
+        var bigint = parseInt(sanitized, 16);
+        if (isNaN(bigint)) {
+          return 'rgba(148, 163, 184, ' + (alpha != null ? alpha : 1) + ')';
+        }
+        var r = (bigint >> 16) & 255;
+        var g = (bigint >> 8) & 255;
+        var b = bigint & 255;
+        var opacity = alpha != null ? alpha : 1;
+        return 'rgba(' + r + ', ' + g + ', ' + b + ', ' + opacity + ')';
+      }
+
+      function renderDetailedTimelineCard(detailed, items) {
+        var card = document.createElement('div');
+        card.className = 'card rounded-2xl p-6 space-y-4';
+        var title = document.createElement('h3');
+        title.className = 'text-lg font-semibold text-slate-100';
+        title.textContent = 'Evolução horária agregada';
+        card.appendChild(title);
+        if (!detailed.hours || !detailed.hours.length) {
+          var empty = document.createElement('div');
+          empty.className = 'text-sm text-slate-400';
+          empty.textContent = 'Sem horas disponíveis para montar a série temporal.';
+          card.appendChild(empty);
+          return card;
+        }
+        var table = document.createElement('div');
+        table.className = 'overflow-auto';
+        var html = '';
+        html += '<table class="w-full text-sm min-w-max">';
+        html += '<thead class="text-slate-200">';
+        html += '<tr>' +
+          '<th class="px-3 py-2 text-left font-semibold">Hora</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">Sessões</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">Receita ($)</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">RPS ($)</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">Cobertura (%)</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">eCPM ($)</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">eCPM Efetivo ($)</th>' +
+          '</tr>';
+        html += '</thead><tbody class="divide-y divide-slate-800/60">';
+        detailed.hours.forEach(function (hour) {
+          var aggregate = computeDetailedHourAggregate(items, hour.key);
+          html += '<tr>' +
+            '<td class="px-3 py-2 text-slate-200">' + escapeHtml(hour.label) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatNumber(aggregate.sessions) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatCurrency(aggregate.revenue) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatCurrency(aggregate.rps) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatPercent(aggregate.coverage) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatCurrency(aggregate.ecpm) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatCurrency(aggregate.effectiveEcpm) + '</td>' +
+            '</tr>';
+        });
+        html += '</tbody></table>';
+        table.innerHTML = html;
+        card.appendChild(table);
+        return card;
+      }
+
+      function getDetailedHourData(item, hourKey) {
+        if (!item || !item.hourly) {
+          return {
+            sessions: 0,
+            revenue: 0,
+            rps: 0,
+            coverage: 0,
+            ecpm: 0,
+            effectiveEcpm: 0,
+            mobTopRequests: 0,
+            mobTopCoverageWeighted: 0,
+            mobTopAdjustedEcpmWeighted: 0
+          };
+        }
+        var direct = item.hourly[hourKey];
+        if (direct) return direct;
+        var stringKey = String(hourKey);
+        if (item.hourly.hasOwnProperty(stringKey)) {
+          return item.hourly[stringKey];
+        }
+        return {
+          sessions: 0,
+          revenue: 0,
+          rps: 0,
+          coverage: 0,
+          ecpm: 0,
+          effectiveEcpm: 0,
+          mobTopRequests: 0,
+          mobTopCoverageWeighted: 0,
+          mobTopAdjustedEcpmWeighted: 0
+        };
+      }
+
+      function computeDetailedHourAggregate(items, hourKey) {
+        var totals = {
+          sessions: 0,
+          revenue: 0,
+          mobTopRequests: 0,
+          mobTopCoverageWeighted: 0,
+          mobTopAdjustedEcpmWeighted: 0
+        };
+        items.forEach(function (item) {
+          var hourData = getDetailedHourData(item, hourKey);
+          totals.sessions += Number(hourData.sessions || 0);
+          totals.revenue += Number(hourData.revenue || 0);
+          totals.mobTopRequests += Number(hourData.mobTopRequests || 0);
+          totals.mobTopCoverageWeighted += Number(hourData.mobTopCoverageWeighted || 0);
+          totals.mobTopAdjustedEcpmWeighted += Number(hourData.mobTopAdjustedEcpmWeighted || 0);
+        });
+        var coverageRatio = totals.mobTopRequests ? totals.mobTopCoverageWeighted / totals.mobTopRequests : 0;
+        var ecpm = totals.mobTopRequests ? totals.mobTopAdjustedEcpmWeighted / totals.mobTopRequests : 0;
+        return {
+          sessions: totals.sessions,
+          revenue: totals.revenue,
+          rps: computeRpsValue(totals.revenue, totals.sessions),
+          coverage: coverageRatio * 100,
+          ecpm: ecpm,
+          effectiveEcpm: ecpm * coverageRatio
+        };
       }
 
       function renderDistributionView(distribution, wrapper) {
@@ -1850,6 +2550,13 @@
         card.appendChild(table);
         attachSortHandlers(card);
         return card;
+      }
+
+      function computeRpsValue(revenue, sessions) {
+        var rev = Number(revenue || 0);
+        var ses = Number(sessions || 0);
+        if (!ses) return 0;
+        return (rev / ses) * 1000;
       }
 
       function formatNumber(value) {
