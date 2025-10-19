@@ -1115,7 +1115,7 @@
           '<th class="px-3 py-2 text-left font-semibold">' + buildSortHeader('distributionSites', 'site', 'Site', 'left') + '</th>' +
           '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionSites', 'rps', 'RPS ($)', 'right') + '</th>' +
           '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionSites', 'coverage', 'Cobertura (%)', 'right') + '</th>' +
-          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionSites', 'rpsEff', 'RPS Efetivo ($)', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionSites', 'ecpmEff', 'eCPM Efetivo ($)', 'right') + '</th>' +
           '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionSites', 'momentum', 'Tendência (1h)', 'right') + '</th>' +
           '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionSites', 'confidence', 'Confiab.', 'right') + '</th>' +
           '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionSites', 'currentShare', '% Atual', 'right') + '</th>' +
@@ -1132,7 +1132,7 @@
           html += '<td class="px-3 py-2 font-semibold text-slate-100">' + escapeHtml(row.site) + '</td>';
           html += '<td class="px-3 py-2 text-right">' + formatCurrency(row.rps) + '</td>';
           html += '<td class="px-3 py-2 text-right">' + formatPercent(row.coverage) + '</td>';
-          html += '<td class="px-3 py-2 text-right">' + formatCurrency(row.rpsEff) + '</td>';
+          html += '<td class="px-3 py-2 text-right">' + formatCurrency(row.ecpmEff) + '</td>';
           html += '<td class="px-3 py-2 text-right">' + formatTrend(row.momentum) + '</td>';
           html += '<td class="px-3 py-2 text-right">' + formatPercent(row.confidence * 100) + '</td>';
           html += '<td class="px-3 py-2 text-right">' + formatShare(row.currentShare) + '</td>';
@@ -1245,7 +1245,9 @@
           meta.className = 'flex flex-wrap items-center gap-2 text-xs text-slate-300';
           meta.innerHTML = '' +
             '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-slate-900/70 border border-slate-700/60">' +
-            '<svg class="w-3 h-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h4l3 8 4-16 3 8h4"/></svg>' + formatCurrency(row.rps || 0) + '</span>' +
+            '<svg class="w-3 h-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h4l3 8 4-16 3 8h4"/></svg>' + formatCurrency(row.ecpmEff || 0) + ' eCPM ef.</span>' +
+            '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-slate-900/70 border border-slate-700/60">' +
+            '<svg class="w-3 h-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h4l3 8 4-16 3 8h4"/></svg>' + formatCurrency(row.rps || 0) + ' RPS</span>' +
             '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-slate-900/70 border border-slate-700/60">' +
             '<svg class="w-3 h-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7h4a1 1 0 011 1v8a1 1 0 01-1 1H3m0-10V5a2 2 0 012-2h2a2 2 0 012 2v2m-6 0h6"/></svg>' + formatNumber(row.suggestedSessions || 0) + '</span>' +
             '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-slate-900/70 border border-slate-700/60">Site ' + formatShare(row.suggestedShare || 0) + '</span>' +
@@ -1341,7 +1343,7 @@
           '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionUrls', 'sessions', 'Sessões (3h)', 'right') + '</th>' +
           '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionUrls', 'rps', 'RPS ($)', 'right') + '</th>' +
           '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionUrls', 'coverage', 'Cobertura (%)', 'right') + '</th>' +
-          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionUrls', 'rpsEff', 'RPS Efetivo ($)', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionUrls', 'ecpmEff', 'eCPM Efetivo ($)', 'right') + '</th>' +
           '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionUrls', 'momentum', 'Momentum', 'right') + '</th>' +
           '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionUrls', 'score', 'Score', 'right') + '</th>' +
           '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionUrls', 'currentShare', '% Atual', 'right') + '</th>' +
@@ -1360,7 +1362,7 @@
             '<td class="px-3 py-2 text-right">' + formatNumber(row.sessions) + '</td>' +
             '<td class="px-3 py-2 text-right">' + formatCurrency(row.rps) + '</td>' +
             '<td class="px-3 py-2 text-right">' + formatPercent(row.coverage) + '</td>' +
-            '<td class="px-3 py-2 text-right">' + formatCurrency(row.rpsEff) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatCurrency(row.ecpmEff) + '</td>' +
             '<td class="px-3 py-2 text-right">' + formatTrend(row.momentum) + '</td>' +
             '<td class="px-3 py-2 text-right">' + formatCurrency(row.score) + '</td>' +
             '<td class="px-3 py-2 text-right">' + formatShare(row.currentShare) + '</td>' +
@@ -1415,7 +1417,7 @@
         if (key === 'site') return (row.site || '').toLowerCase();
         if (key === 'rps') return Number(row.rps || 0);
         if (key === 'coverage') return Number(row.coverage || 0);
-        if (key === 'rpsEff') return Number(row.rpsEff || 0);
+        if (key === 'ecpmEff') return Number(row.ecpmEff || 0);
         if (key === 'momentum') return Number(row.momentum || 0);
         if (key === 'confidence') return Number(row.confidence || 0);
         if (key === 'currentShare') return Number(row.currentShare || 0);
@@ -1446,7 +1448,7 @@
         if (key === 'sessions') return Number(row.sessions || 0);
         if (key === 'rps') return Number(row.rps || 0);
         if (key === 'coverage') return Number(row.coverage || 0);
-        if (key === 'rpsEff') return Number(row.rpsEff || 0);
+        if (key === 'ecpmEff') return Number(row.ecpmEff || 0);
         if (key === 'momentum') return Number(row.momentum || 0);
         if (key === 'score') return Number(row.score || 0);
         if (key === 'currentShare') return Number(row.currentShare || 0);

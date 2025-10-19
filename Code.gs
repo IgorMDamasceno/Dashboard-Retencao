@@ -808,7 +808,8 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
       var weight = urlSessions / (urlSessions + controls.reliabilityK);
       var momentum = computeMomentum_(urlHourRps);
       var coverageFactor = computeCoverageFactor_(coverageRatio, controls);
-      var rpsEff = urlRps * coverageFactor;
+      var ecpmEff = ecpm * coverageRatio;
+      var ecpmScore = ecpmEff * coverageFactor;
       urlEntries.push({
         site: siteKey,
         url: urlInfo.url,
@@ -819,7 +820,8 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
         coverage: coverage,
         coverageRatio: coverageRatio,
         ecpm: ecpm,
-        rpsEff: rpsEff,
+        ecpmEff: ecpmEff,
+        ecpmScore: ecpmScore,
         weight: weight,
         momentum: momentum,
         rounds: rounds,
@@ -832,10 +834,12 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
     var siteCoverageRatio = coverageRequests ? coverageWeighted / coverageRequests : 0;
     var siteCoverage = siteCoverageRatio * 100;
     var siteCoverageFactor = computeCoverageFactor_(siteCoverageRatio, controls);
-    var rpsEffSite = rps * siteCoverageFactor;
+    var siteEcpm = coverageRequests ? ecpmWeighted / coverageRequests : 0;
+    var siteEcpmEff = siteEcpm * siteCoverageRatio;
+    var siteEcpmScore = siteEcpmEff * siteCoverageFactor;
     var siteMomentum = computeMomentum_(hourRps);
     var siteConfidence = sessionsWindow / (sessionsWindow + controls.reliabilityK);
-    var siteScore = rpsEffSite;
+    var siteScore = siteEcpmScore;
     if (siteCoverageRatio >= controls.coverageTarget) {
       siteScore *= 1.02;
     }
@@ -843,7 +847,7 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
     var roundsTotal = 0;
     var roundsCount = 0;
     urlEntries.forEach(function (entry) {
-      var scoreBase = entry.weight * entry.rpsEff + (1 - entry.weight) * rpsEffSite;
+      var scoreBase = entry.weight * entry.ecpmScore + (1 - entry.weight) * siteEcpmScore;
       var momentumFactor = 1 + 0.15 * clamp_(entry.momentum, -0.5, 0.5);
       entry.score = scoreBase * momentumFactor;
       roundsTotal += entry.rounds;
@@ -873,9 +877,11 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
       sessions: sessionsWindow,
       revenue: revenueWindow,
       rps: rps,
+      ecpm: siteEcpm,
       coverage: siteCoverage,
       coverageRatio: siteCoverageRatio,
-      rpsEff: rpsEffSite,
+      ecpmEff: siteEcpmEff,
+      ecpmScore: siteEcpmScore,
       momentum: siteMomentum,
       confidence: siteConfidence,
       score: siteScore,
@@ -1091,8 +1097,9 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
         sessions: entry.sessions,
         revenue: entry.revenue,
         rps: entry.rps,
+        ecpm: entry.ecpm,
         coverage: entry.coverage,
-        rpsEff: entry.rpsEff,
+        ecpmEff: entry.ecpmEff,
         momentum: entry.momentum,
         rounds: entry.rounds,
         score: entry.score,
@@ -1253,8 +1260,9 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
     return {
       site: row.site,
       rps: row.rps,
+      ecpm: row.ecpm,
       coverage: row.coverage,
-      rpsEff: row.rpsEff,
+      ecpmEff: row.ecpmEff,
       momentum: row.momentum,
       confidence: row.confidence,
       score: row.score,
