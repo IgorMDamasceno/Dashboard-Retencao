@@ -362,6 +362,7 @@
           search: ''
         },
         detailedChart: null,
+        detailedMetricMenuCleanup: null,
         analysis: null
       };
 
@@ -861,6 +862,9 @@
           syncDistributionState(data.distribution);
         }
         ensureActiveAnalysisTab(data);
+        if (state.analysisTab !== 'detailed') {
+          cleanupDetailedMetricMenu();
+        }
         if (state.analysisTab !== 'detailed' && state.detailedChart) {
           state.detailedChart.destroy();
           state.detailedChart = null;
@@ -1135,38 +1139,6 @@
         }
         card.appendChild(listContainer);
 
-        var metricsWrapper = document.createElement('div');
-        metricsWrapper.className = 'space-y-2';
-        var metricsLabel = document.createElement('p');
-        metricsLabel.className = 'text-sm text-slate-300';
-        metricsLabel.textContent = 'Métricas exibidas no gráfico';
-        metricsWrapper.appendChild(metricsLabel);
-        var metricsGrid = document.createElement('div');
-        metricsGrid.className = 'flex flex-wrap gap-2';
-        DETAILED_METRICS.forEach(function (metric) {
-          var metricLabel = document.createElement('label');
-          metricLabel.className = 'inline-flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-all';
-          metricLabel.classList.add('border-slate-700/60', 'bg-slate-900/30');
-          var isSelected = state.detailed.metrics.indexOf(metric.key) !== -1;
-          if (isSelected) {
-            metricLabel.classList.add('border-sky-500/60', 'bg-sky-500/10');
-          }
-          var metricInput = document.createElement('input');
-          metricInput.type = 'checkbox';
-          metricInput.checked = isSelected;
-          metricInput.addEventListener('change', function () {
-            toggleDetailedMetric(metric.key, metricInput.checked);
-          });
-          var metricName = document.createElement('span');
-          metricName.className = 'text-xs text-slate-200';
-          metricName.textContent = metric.label;
-          metricLabel.appendChild(metricInput);
-          metricLabel.appendChild(metricName);
-          metricsGrid.appendChild(metricLabel);
-        });
-        metricsWrapper.appendChild(metricsGrid);
-        card.appendChild(metricsWrapper);
-
         return card;
       }
 
@@ -1247,6 +1219,117 @@
         }
         state.detailed.metrics = metrics;
         renderAnalysis();
+      }
+
+      function cleanupDetailedMetricMenu() {
+        if (state.detailedMetricMenuCleanup) {
+          state.detailedMetricMenuCleanup();
+          state.detailedMetricMenuCleanup = null;
+        }
+      }
+
+      function buildDetailedMetricsSummary() {
+        var selected = state.detailed && state.detailed.metrics ? state.detailed.metrics.slice() : [];
+        if (!selected.length) {
+          return 'Nenhuma métrica';
+        }
+        var labels = selected.map(function (key) {
+          var meta = getDetailedMetricMeta(key);
+          return meta ? meta.label : key;
+        });
+        if (labels.length <= 2) {
+          return labels.join(', ');
+        }
+        return labels.slice(0, 2).join(', ') + ' +' + (labels.length - 2);
+      }
+
+      function buildDetailedMetricsDropdown() {
+        var wrapper = document.createElement('div');
+        wrapper.className = 'relative';
+        var button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-700/60 bg-slate-900/40 text-xs font-semibold text-slate-200 hover:border-sky-500/60 hover:text-white transition-colors';
+        var summaryText = buildDetailedMetricsSummary();
+        button.title = 'Selecione as métricas exibidas no gráfico. Atuais: ' + summaryText;
+        var label = document.createElement('span');
+        label.className = 'text-xs font-semibold text-slate-200 truncate max-w-[14rem]';
+        label.textContent = 'Métricas: ' + summaryText;
+        button.appendChild(label);
+        var caret = document.createElement('span');
+        caret.className = 'text-slate-400 text-sm';
+        caret.textContent = '▾';
+        button.appendChild(caret);
+        wrapper.appendChild(button);
+
+        var menu = document.createElement('div');
+        menu.className = 'absolute right-0 mt-2 w-64 rounded-xl border border-slate-700/70 bg-slate-900/95 shadow-xl p-3 space-y-3 hidden z-30';
+        var header = document.createElement('div');
+        header.className = 'flex items-center justify-between';
+        var menuTitle = document.createElement('span');
+        menuTitle.className = 'text-xs font-semibold text-slate-200';
+        menuTitle.textContent = 'Métricas disponíveis';
+        header.appendChild(menuTitle);
+        var helper = document.createElement('span');
+        helper.className = 'text-[0.65rem] text-slate-400';
+        helper.textContent = 'Escolha ao menos uma opção';
+        header.appendChild(helper);
+        menu.appendChild(header);
+
+        DETAILED_METRICS.forEach(function (metric) {
+          var isSelected = state.detailed.metrics.indexOf(metric.key) !== -1;
+          var option = document.createElement('label');
+          option.className = 'flex items-center justify-between gap-3 px-3 py-2 rounded-lg border transition-colors cursor-pointer';
+          option.classList.add('border-transparent');
+          if (isSelected) {
+            option.classList.add('bg-sky-500/10', 'border-sky-500/60');
+          } else {
+            option.classList.add('hover:border-slate-700/70', 'hover:bg-slate-800/60');
+          }
+          var name = document.createElement('span');
+          name.className = 'text-xs text-slate-200';
+          name.textContent = metric.label;
+          option.appendChild(name);
+          var checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.checked = isSelected;
+          checkbox.className = 'h-4 w-4 text-sky-500';
+          checkbox.addEventListener('change', function () {
+            toggleDetailedMetric(metric.key, checkbox.checked);
+          });
+          option.appendChild(checkbox);
+          menu.appendChild(option);
+        });
+
+        wrapper.appendChild(menu);
+
+        button.addEventListener('click', function (ev) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          var willOpen = menu.classList.contains('hidden');
+          cleanupDetailedMetricMenu();
+          if (willOpen) {
+            menu.classList.remove('hidden');
+            var handleOutside = function (event) {
+              if (!wrapper.contains(event.target)) {
+                cleanupDetailedMetricMenu();
+              }
+            };
+            var handleEscape = function (event) {
+              if (event.key === 'Escape') {
+                cleanupDetailedMetricMenu();
+              }
+            };
+            state.detailedMetricMenuCleanup = function () {
+              document.removeEventListener('click', handleOutside);
+              document.removeEventListener('keydown', handleEscape);
+              menu.classList.add('hidden');
+            };
+            document.addEventListener('click', handleOutside);
+            document.addEventListener('keydown', handleEscape);
+          }
+        });
+
+        return wrapper;
       }
 
       function renderDetailedSummaryCard(detailed, items) {
@@ -1370,18 +1453,26 @@
       }
 
       function renderDetailedChartCard(detailed, items) {
+        cleanupDetailedMetricMenu();
         var card = document.createElement('div');
         card.className = 'card rounded-2xl p-6 space-y-4';
         var header = document.createElement('div');
-        header.className = 'flex items-center justify-between flex-wrap gap-3';
+        header.className = 'flex flex-wrap items-start justify-between gap-3';
+        var heading = document.createElement('div');
+        heading.className = 'flex flex-col gap-1';
         var title = document.createElement('h3');
         title.className = 'text-lg font-semibold text-slate-100';
         title.textContent = 'Série temporal das métricas selecionadas';
-        header.appendChild(title);
+        heading.appendChild(title);
         var legend = document.createElement('span');
         legend.className = 'text-xs text-slate-400';
         legend.textContent = 'Cada linha representa a métrica escolhida por item';
-        header.appendChild(legend);
+        heading.appendChild(legend);
+        header.appendChild(heading);
+        var actions = document.createElement('div');
+        actions.className = 'flex items-center gap-2';
+        actions.appendChild(buildDetailedMetricsDropdown());
+        header.appendChild(actions);
         card.appendChild(header);
         if (!detailed.hours || !detailed.hours.length) {
           var empty = document.createElement('div');
@@ -1390,9 +1481,16 @@
           card.appendChild(empty);
           return card;
         }
+        var container = document.createElement('div');
+        container.className = 'relative w-full rounded-2xl border border-slate-800/60 bg-slate-900/30 overflow-hidden';
+        container.style.height = '420px';
+        container.style.minHeight = '420px';
+        container.style.maxHeight = '420px';
         var canvas = document.createElement('canvas');
-        canvas.style.height = '360px';
-        card.appendChild(canvas);
+        canvas.className = 'w-full h-full';
+        canvas.height = 420;
+        container.appendChild(canvas);
+        card.appendChild(container);
         updateDetailedChart(canvas, detailed, items);
         return card;
       }
