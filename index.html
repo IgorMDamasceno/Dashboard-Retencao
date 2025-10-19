@@ -1266,6 +1266,12 @@
             meta.innerHTML += '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-slate-900/70 border border-slate-700/60">Próx: ' + escapeHtml(row.nextEval) + '</span>';
           }
           item.appendChild(meta);
+          if (row.reason) {
+            var reason = document.createElement('div');
+            reason.className = 'text-xs text-slate-400 leading-snug';
+            reason.textContent = row.reason;
+            item.appendChild(reason);
+          }
           list.appendChild(item);
         });
         card.appendChild(list);

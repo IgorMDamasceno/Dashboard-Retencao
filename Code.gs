@@ -1116,7 +1116,12 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
         suggestedGlobalShare: suggestedGlobalShare,
         deltaGlobalShare: deltaGlobalShare,
         guaranteed: !!item.required,
-        limited: false
+        limited: false,
+        siteEcpmEff: siteRow.ecpmEff,
+        siteCoverage: siteRow.coverage,
+        siteMode: siteRow.apostas ? 'Apostas' : 'Normal',
+        siteMomentum: siteRow.momentum,
+        siteScore: siteRow.score
       };
     });
 
@@ -1282,8 +1287,23 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
     defaultSite = siteOutput[0].site;
   }
 
+  var siteContextMap = {};
+  siteRows.forEach(function (row) {
+    siteContextMap[row.site] = {
+      ecpmEff: row.ecpmEff,
+      coverage: row.coverage,
+      momentum: row.momentum,
+      mode: row.apostas ? 'Apostas' : 'Normal',
+      score: row.score
+    };
+  });
+
   var sortedGlobal = globalAggregates.slice().sort(function (a, b) {
     return (b.suggestedGlobalShare || 0) - (a.suggestedGlobalShare || 0);
+  });
+  sortedGlobal.forEach(function (row, index) {
+    var siteCtx = siteContextMap[row.site] || {};
+    row.reason = describeUrlAllocationReason_(row, siteCtx, controls, index, sortedGlobal.length, limitApplied);
   });
   var activeCount = sortedGlobal.filter(function (row) { return (row.suggestedGlobalShare || 0) > 0; }).length;
   var totalCount = sortedGlobal.length;
@@ -1332,6 +1352,130 @@ function selectMobTopBlock_(blocks) {
     };
   }
   return best;
+}
+
+function describeUrlAllocationReason_(row, siteCtx, controls, index, totalCount, limitApplied) {
+  var share = toNumber_(row && row.suggestedGlobalShare != null ? row.suggestedGlobalShare : 0);
+  var delta = toNumber_(row && row.deltaGlobalShare != null ? row.deltaGlobalShare : 0);
+  var parts = [];
+
+  if (share <= 0) {
+    if ((row && row.limited) || limitApplied) {
+      parts.push('Sem tráfego nesta rodada por causa do limite de URLs ativas.');
+    } else {
+      parts.push('Sem tráfego sugerido nesta rodada.');
+    }
+    if (row && row.guaranteed) {
+      parts.push('Mantida como garantida (' + (row.status || 'seed') + ').');
+    } else if (row && row.status) {
+      parts.push('Status atual: ' + row.status + '.');
+    }
+    return parts.join(' ');
+  }
+
+  var shareText = formatShareValue_(share);
+  var shareChange = '';
+  if (Math.abs(delta) >= 0.0005) {
+    shareChange = (delta >= 0 ? '+' : '-') + formatShareDeltaValue_(delta);
+  }
+  var siteShare = toNumber_(row && row.suggestedShare != null ? row.suggestedShare : 0);
+  var siteShareText = formatShareValue_(siteShare);
+
+  var intro = 'Share sugerido ' + shareText;
+  if (shareChange) {
+    intro += ' (' + shareChange + ')';
+  }
+  parts.push(intro + '.');
+  parts.push('Dentro do site recebe ' + siteShareText + ' do tráfego sugerido.');
+
+  var rankText = 'Prioridade global #' + (index + 1) + ' de ' + totalCount + '.';
+  parts.push(rankText);
+
+  if (siteCtx && siteCtx.mode === 'Apostas') {
+    parts.push('Site em modo Apostas (exploração controlada).');
+  }
+
+  var ecpmEff = toNumber_(row && row.ecpmEff != null ? row.ecpmEff : 0);
+  if (ecpmEff > 0) {
+    var siteEcpmEff = toNumber_(siteCtx && siteCtx.ecpmEff != null ? siteCtx.ecpmEff : 0);
+    var ecpmText = formatCurrencyValue_(ecpmEff, 2);
+    if (siteEcpmEff > 0) {
+      var diffPct = ((ecpmEff - siteEcpmEff) / siteEcpmEff) * 100;
+      if (diffPct > 5) {
+        parts.push('eCPM efetivo ' + ecpmText + ' (' + formatPercentDisplay_(diffPct, 0) + ' acima da média do site).');
+      } else if (diffPct < -5) {
+        parts.push('eCPM efetivo ' + ecpmText + ' (' + formatPercentDisplay_(Math.abs(diffPct), 0) + ' abaixo da média do site).');
+      } else {
+        parts.push('eCPM efetivo ' + ecpmText + ' alinhado com o site.');
+      }
+    } else {
+      parts.push('eCPM efetivo ' + ecpmText + '.');
+    }
+  }
+
+  var coverage = toNumber_(row && row.coverage != null ? row.coverage : 0);
+  if (coverage > 0) {
+    var target = toNumber_(controls && controls.coverageTarget != null ? controls.coverageTarget : 0) * 100;
+    if (target && coverage >= target) {
+      parts.push('Cobertura ' + formatPercentDisplay_(coverage, 1) + ' acima da meta.');
+    } else if (coverage >= 60) {
+      parts.push('Cobertura ' + formatPercentDisplay_(coverage, 1) + ' levemente abaixo da meta.');
+    } else {
+      parts.push('Cobertura baixa ' + formatPercentDisplay_(coverage, 1) + ', monitorar fill.');
+    }
+  }
+
+  var momentum = toNumber_(row && row.momentum != null ? row.momentum : 0);
+  if (momentum >= 0.1) {
+    parts.push('Momentum positivo ' + formatPercentDisplay_(momentum * 100, 0) + ' vs média das 2h anteriores.');
+  } else if (momentum <= -0.1) {
+    parts.push('Momentum negativo ' + formatPercentDisplay_(Math.abs(momentum) * 100, 0) + ' vs média das 2h anteriores.');
+  }
+
+  var rounds = Math.max(0, Math.round(toNumber_(row && row.rounds != null ? row.rounds : 0)));
+  if (rounds > 0) {
+    parts.push('Já avaliada em ' + rounds + ' ' + (rounds === 1 ? 'rodada' : 'rodadas') + '.');
+  } else {
+    parts.push('Em fase de seed para ganhar sinal.');
+  }
+
+  if (row && row.guaranteed) {
+    parts.push('Mantém tráfego mínimo garantido (' + (row.status || 'controle') + ').');
+  } else if (row && row.status) {
+    parts.push('Status: ' + row.status + '.');
+  }
+
+  return parts.join(' ');
+}
+
+function formatShareValue_(share, decimals) {
+  var dec = decimals != null ? decimals : 1;
+  var factor = Math.pow(10, dec);
+  var percent = toNumber_(share) * 100;
+  var rounded = Math.round(percent * factor) / factor;
+  return rounded.toFixed(dec) + '%';
+}
+
+function formatShareDeltaValue_(delta, decimals) {
+  var dec = decimals != null ? decimals : 1;
+  var factor = Math.pow(10, dec);
+  var percentPoints = Math.abs(toNumber_(delta) * 100);
+  var rounded = Math.round(percentPoints * factor) / factor;
+  return rounded.toFixed(dec) + 'pp';
+}
+
+function formatCurrencyValue_(value, decimals) {
+  var dec = decimals != null ? decimals : 2;
+  var factor = Math.pow(10, dec);
+  var amount = Math.round(toNumber_(value) * factor) / factor;
+  return '$' + amount.toFixed(dec);
+}
+
+function formatPercentDisplay_(value, decimals) {
+  var dec = decimals != null ? decimals : 1;
+  var factor = Math.pow(10, dec);
+  var percent = Math.round(toNumber_(value) * factor) / factor;
+  return percent.toFixed(dec) + '%';
 }
 
 function getConfigSnapshot_() {
