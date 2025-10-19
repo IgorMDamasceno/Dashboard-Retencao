@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
     body {
@@ -320,6 +321,9 @@
         { key: 'effectiveEcpm', label: 'eCPM Efetivo ($)', type: 'currency' }
       ];
       var DETAILED_COLORS = ['#38bdf8', '#34d399', '#f97316', '#a855f7', '#f43f5e', '#facc15', '#22d3ee', '#fb7185', '#4ade80', '#60a5fa'];
+      if (window.Chart && window.ChartDataLabels) {
+        Chart.register(window.ChartDataLabels);
+      }
       var state = {
         config: {
           operations: [],
@@ -359,7 +363,8 @@
           mode: 'url',
           selected: [],
           metrics: ['revenue'],
-          search: ''
+          search: '',
+          allowEmpty: false
         },
         detailedChart: null,
         detailedMetricMenuCleanup: null,
@@ -1076,6 +1081,28 @@
         searchWrapper.appendChild(searchInput);
         card.appendChild(searchWrapper);
 
+        var bulkActions = document.createElement('div');
+        bulkActions.className = 'flex flex-wrap items-center gap-2 text-xs';
+        var selectAll = document.createElement('button');
+        selectAll.type = 'button';
+        selectAll.className = 'px-3 py-1.5 rounded-lg border border-slate-700/60 bg-slate-900/40 font-semibold text-slate-200 hover:border-sky-500/60 hover:text-white transition-colors';
+        selectAll.textContent = 'Selecionar todos';
+        selectAll.addEventListener('click', function (ev) {
+          ev.preventDefault();
+          selectAllDetailedItems();
+        });
+        bulkActions.appendChild(selectAll);
+        var clearAll = document.createElement('button');
+        clearAll.type = 'button';
+        clearAll.className = 'px-3 py-1.5 rounded-lg border border-transparent text-slate-300 hover:text-white hover:border-slate-700/60 transition-colors';
+        clearAll.textContent = 'Limpar tudo';
+        clearAll.addEventListener('click', function (ev) {
+          ev.preventDefault();
+          clearDetailedSelection();
+        });
+        bulkActions.appendChild(clearAll);
+        card.appendChild(bulkActions);
+
         var listContainer = document.createElement('div');
         listContainer.className = 'scroll-list-15 space-y-2 pr-1';
         var items = getDetailedItems(detailed);
@@ -1158,7 +1185,10 @@
 
       function ensureDetailedState(detailed) {
         if (!state.detailed) {
-          state.detailed = { mode: 'url', selected: [], metrics: ['revenue'], search: '' };
+          state.detailed = { mode: 'url', selected: [], metrics: ['revenue'], search: '', allowEmpty: false };
+        }
+        if (typeof state.detailed.allowEmpty === 'undefined') {
+          state.detailed.allowEmpty = false;
         }
         var hasUrls = detailed && detailed.urls && detailed.urls.length;
         var hasSites = detailed && detailed.sites && detailed.sites.length;
@@ -1171,13 +1201,14 @@
         var validKeys = {};
         items.forEach(function (item) { validKeys[item.key] = true; });
         state.detailed.selected = (state.detailed.selected || []).filter(function (key) { return validKeys[key]; });
-        if (!state.detailed.selected.length && items.length) {
+        if (!state.detailed.selected.length && items.length && !state.detailed.allowEmpty) {
           var limit = Math.min(items.length, state.detailed.mode === 'url' ? 5 : 3);
           var defaults = [];
           for (var i = 0; i < limit; i++) {
             defaults.push(items[i].key);
           }
           state.detailed.selected = defaults;
+          state.detailed.allowEmpty = false;
         }
         if (!state.detailed.metrics || !state.detailed.metrics.length) {
           state.detailed.metrics = ['revenue'];
@@ -1187,6 +1218,7 @@
       function setDetailedMode(mode) {
         if (state.detailed.mode === mode) return;
         state.detailed.mode = mode;
+        state.detailed.allowEmpty = false;
         ensureDetailedState(state.analysis && state.analysis.detailed);
         renderAnalysis();
       }
@@ -1203,6 +1235,21 @@
         } else {
           state.detailed.selected.splice(index, 1);
         }
+        state.detailed.allowEmpty = state.detailed.selected.length === 0;
+        renderAnalysis();
+      }
+
+      function selectAllDetailedItems() {
+        if (!state.analysis || !state.analysis.detailed) return;
+        var items = getDetailedItems(state.analysis.detailed);
+        state.detailed.selected = items.map(function (item) { return item.key; });
+        state.detailed.allowEmpty = false;
+        renderAnalysis();
+      }
+
+      function clearDetailedSelection() {
+        state.detailed.selected = [];
+        state.detailed.allowEmpty = true;
         renderAnalysis();
       }
 
@@ -1551,6 +1598,34 @@
                     var value = context.parsed.y;
                     return context.dataset.label + ': ' + formatDetailedMetricValue(metric, value);
                   }
+                }
+              },
+              datalabels: {
+                align: 'top',
+                anchor: 'end',
+                backgroundColor: function (context) {
+                  var color = context.dataset && context.dataset.borderColor ? context.dataset.borderColor : '#38bdf8';
+                  return hexToRgba(color, 0.55);
+                },
+                borderRadius: 6,
+                clamp: true,
+                color: '#e2e8f0',
+                font: {
+                  size: 10,
+                  weight: '600'
+                },
+                formatter: function (value, context) {
+                  if (value === null || typeof value === 'undefined') {
+                    return '';
+                  }
+                  return formatDetailedMetricValue(context.dataset.detailedMetric, value);
+                },
+                offset: 6,
+                padding: {
+                  top: 2,
+                  right: 4,
+                  bottom: 2,
+                  left: 4
                 }
               }
             },
