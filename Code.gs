@@ -3,6 +3,9 @@ const OPERATIONS_SHEET = 'Config - Operações';
 const OPERATION_INTEGRATION_SHEET = 'Config - Operação API';
 const TRAFFIC_SHEET = 'Config - Trafego';
 const REVSHARE_SHEET = 'Config - RevShare';
+const LINK_ROUTER_HISTORY_SHEET = 'Histórico - Link Router';
+const LINK_ROUTER_BASE_URL = 'https://rotasv2.spun.com.br';
+const LINK_ROUTER_TOKEN = '1|crewZvM3pCrHsz9gwWVfzyzQ5IrTk0T7gltREA4d67dc7105';
 const TRAFFIC_TYPES = ['Automação', 'Broadcast', 'Push'];
 const DISTRIBUTION_STATE_SHEET = 'Controle - Distribuição';
 const DISTRIBUTION_CONFIG_SHEET = 'Config - Distribuição';
@@ -2053,6 +2056,18 @@ function ensureRevShareSheet_() {
   return sheet;
 }
 
+function ensureLinkRouterHistorySheet_() {
+  var ss = SpreadsheetApp.getActive();
+  var sheet = ss.getSheetByName(LINK_ROUTER_HISTORY_SHEET);
+  if (!sheet) {
+    sheet = ss.insertSheet(LINK_ROUTER_HISTORY_SHEET);
+  }
+  var headers = ['Timestamp', 'Operação', 'Tráfego', 'Empresa ID', 'Domínio ID', 'Slug', 'URL', 'Percentual Enviado (%)', 'Origem do Percentual', 'Status', 'Mensagem'];
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  sheet.setFrozenRows(1);
+  return sheet;
+}
+
 function ensureDistributionSheet_() {
   var ss = SpreadsheetApp.getActive();
   var sheet = ss.getSheetByName(DISTRIBUTION_STATE_SHEET);
@@ -2561,4 +2576,347 @@ function standardDeviation_(values) {
   });
   if (!count) return 0;
   return Math.sqrt(sum / count);
+}
+
+function syncLinkRouterDistribution(request) {
+  if (!request) {
+    throw new Error('Parâmetros inválidos.');
+  }
+  var operation = String(request.operation || '').trim();
+  var traffic = String(request.traffic || '').trim();
+  if (!operation) {
+    throw new Error('Selecione a operação.');
+  }
+  if (!traffic) {
+    throw new Error('Selecione o tráfego.');
+  }
+  var params = {
+    operation: operation,
+    traffic: traffic,
+    startDate: request.startDate || '',
+    endDate: request.endDate || '',
+    urlWindow: request.window || 'day'
+  };
+  if (request.distribution) {
+    params.distribution = request.distribution;
+  }
+
+  var dashboard = getDashboardData(params);
+  var integration = dashboard && dashboard.integration ? dashboard.integration : null;
+  if (!integration || !integration.companyId || !integration.domainId || !integration.routeSlug) {
+    throw new Error('Integração Link Router não configurada para a operação selecionada.');
+  }
+
+  var distribution = dashboard && dashboard.distribution ? dashboard.distribution : null;
+  if (!distribution || !distribution.globalUrls || !distribution.globalUrls.all || !distribution.globalUrls.all.length) {
+    throw new Error('Plano de distribuição indisponível para sincronização.');
+  }
+
+  var shareState = buildLinkRouterShareState_(distribution);
+  var routeResponse = fetchLinkRouterRoute_(integration.companyId, integration.domainId, integration.routeSlug);
+  if (!routeResponse.ok || !routeResponse.body || routeResponse.body.status !== 'success') {
+    throw new Error('Falha ao consultar a rota na API: ' + formatLinkRouterError_(routeResponse));
+  }
+  var routeData = routeResponse.body.data || {};
+  var links = routeData.links || [];
+  if (!links.length) {
+    throw new Error('Nenhum link encontrado na API para o slug informado.');
+  }
+
+  var linkMap = {};
+  var pctMap = {};
+  var historyRows = [];
+  var unmatchedLinks = [];
+  var timestamp = new Date();
+  var totalPercent = 0;
+
+  links.forEach(function (link) {
+    var id = String(link && (link.id != null ? link.id : link.link_id != null ? link.link_id : '')).trim();
+    if (!id) {
+      return;
+    }
+    var linkUrl = String(link.link || link.url || '').trim();
+    linkMap[id] = linkUrl;
+    var shareInfo = matchShareInfoForLink_(linkUrl, shareState);
+    var percent;
+    if (shareInfo) {
+      percent = shareInfo.share * 100;
+    } else {
+      unmatchedLinks.push(linkUrl);
+      percent = link && link.percentage != null && link.percentage !== '' ? toNumber_(link.percentage) : 0;
+    }
+    if (isNaN(percent)) {
+      percent = 0;
+    }
+    percent = Math.max(0, percent);
+    percent = Math.round(percent * 100) / 100;
+    pctMap[id] = percent;
+    totalPercent += percent;
+    historyRows.push([
+      timestamp,
+      operation,
+      traffic,
+      integration.companyId,
+      integration.domainId,
+      integration.routeSlug,
+      linkUrl,
+      percent,
+      shareInfo ? 'Plano sugerido' : 'Mantido existente',
+      '',
+      ''
+    ]);
+  });
+
+  var linkIds = Object.keys(pctMap);
+  if (!linkIds.length) {
+    throw new Error('Nenhum link válido retornado pela API para sincronização.');
+  }
+
+  if (totalPercent > 0 && Math.abs(totalPercent - 100) > 0.05) {
+    var scale = 100 / totalPercent;
+    totalPercent = 0;
+    linkIds.forEach(function (id) {
+      var scaled = Math.round(pctMap[id] * scale * 100) / 100;
+      pctMap[id] = scaled;
+      totalPercent += scaled;
+    });
+  }
+  var diff = totalPercent > 0 ? Math.round((totalPercent - 100) * 100) / 100 : 0;
+  if (totalPercent > 0 && Math.abs(diff) >= 0.01 && linkIds.length) {
+    var adjustId = linkIds[linkIds.length - 1];
+    pctMap[adjustId] = Math.max(0, Math.round((pctMap[adjustId] - diff) * 100) / 100);
+    totalPercent = Math.round((totalPercent - diff) * 100) / 100;
+  }
+
+  var payload = {
+    domain: parseLinkRouterId_(integration.domainId),
+    company_id: parseLinkRouterId_(integration.companyId),
+    slug: integration.routeSlug,
+    link: linkMap,
+    percentage: pctMap
+  };
+
+  var updateResponse = callLinkRouterApi_('/api/link_router/links_and_percentage', 'put', null, payload);
+  var success = updateResponse.ok && updateResponse.body && updateResponse.body.status === 'success';
+  var message = success ? 'Percentuais sincronizados com sucesso.' : formatLinkRouterError_(updateResponse);
+
+  historyRows = historyRows.map(function (row) {
+    row[9] = success ? 'OK' : 'ERRO';
+    row[10] = message;
+    return row;
+  });
+  appendLinkRouterHistory_(historyRows);
+
+  if (!success) {
+    throw new Error(message);
+  }
+
+  var leftovers = collectUnmatchedShares_(shareState);
+
+  return {
+    success: true,
+    message: message,
+    dashboard: dashboard,
+    linksUpdated: linkIds.length,
+    totalPercentage: totalPercent,
+    unmatchedLinks: unmatchedLinks,
+    leftoverShares: leftovers
+  };
+}
+
+function parseLinkRouterId_(value) {
+  var num = Number(value);
+  return isNaN(num) ? value : num;
+}
+
+function appendLinkRouterHistory_(rows) {
+  if (!rows || !rows.length) {
+    return;
+  }
+  var sheet = ensureLinkRouterHistorySheet_();
+  var startRow = Math.max(sheet.getLastRow(), 1) + 1;
+  sheet.getRange(startRow, 1, rows.length, rows[0].length).setValues(rows);
+}
+
+function buildLinkRouterShareState_(distribution) {
+  var entries = (distribution && distribution.globalUrls && distribution.globalUrls.all) ? distribution.globalUrls.all : [];
+  var exact = {};
+  var queue = {};
+  var infos = [];
+  entries.forEach(function (entry) {
+    var info = {
+      url: entry.url || '',
+      share: toNumber_(entry.suggestedGlobalShare || 0),
+      siteShare: toNumber_(entry.suggestedShare || 0),
+      site: entry.site || '',
+      matched: false,
+      original: entry
+    };
+    infos.push(info);
+    var fullKey = String(info.url || '').trim().toLowerCase();
+    if (fullKey) {
+      if (!exact[fullKey]) {
+        exact[fullKey] = [];
+      }
+      exact[fullKey].push(info);
+    }
+    var normKey = normUrlStrict_(info.url || '');
+    if (normKey) {
+      if (!queue[normKey]) {
+        queue[normKey] = [];
+      }
+      queue[normKey].push(info);
+    }
+  });
+  Object.keys(exact).forEach(function (key) {
+    exact[key].sort(function (a, b) { return (b.share || 0) - (a.share || 0); });
+  });
+  Object.keys(queue).forEach(function (key) {
+    queue[key].sort(function (a, b) { return (b.share || 0) - (a.share || 0); });
+  });
+  return { exact: exact, queue: queue, infos: infos };
+}
+
+function matchShareInfoForLink_(url, state) {
+  if (!url || !state) {
+    return null;
+  }
+  var fullKey = String(url || '').trim().toLowerCase();
+  var exactList = fullKey ? state.exact[fullKey] : null;
+  if (exactList && exactList.length) {
+    while (exactList.length) {
+      var exactCandidate = exactList.shift();
+      if (!exactCandidate.matched) {
+        exactCandidate.matched = true;
+        return exactCandidate;
+      }
+    }
+  }
+  var normKey = normUrlStrict_(url || '');
+  var list = normKey ? state.queue[normKey] : null;
+  if (list && list.length) {
+    while (list.length) {
+      var candidate = list.shift();
+      if (!candidate.matched) {
+        candidate.matched = true;
+        return candidate;
+      }
+    }
+  }
+  return null;
+}
+
+function collectUnmatchedShares_(state) {
+  if (!state || !state.infos) {
+    return [];
+  }
+  var leftovers = [];
+  state.infos.forEach(function (info) {
+    if (!info.matched && toNumber_(info.share || 0) > 0.0005) {
+      leftovers.push({ url: info.url || '', share: toNumber_(info.share || 0) });
+    }
+  });
+  return leftovers;
+}
+
+function fetchLinkRouterRoute_(companyId, domainId, slug) {
+  var params = {
+    company_id: companyId,
+    domain: domainId,
+    slug: slug
+  };
+  return callLinkRouterApi_('/api/link_router/route', 'get', params, null);
+}
+
+function callLinkRouterApi_(path, method, qs, payload) {
+  var baseUrl = String(LINK_ROUTER_BASE_URL || '').replace(/\/+$/, '');
+  var url = baseUrl + path;
+  if (qs && Object.keys(qs).length) {
+    var query = Object.keys(qs).filter(function (key) {
+      var value = qs[key];
+      return value !== null && value !== undefined && value !== '';
+    }).map(function (key) {
+      return encodeURIComponent(key) + '=' + encodeURIComponent(String(qs[key]));
+    }).join('&');
+    if (query) {
+      url += (url.indexOf('?') >= 0 ? '&' : '?') + query;
+    }
+  }
+  var options = {
+    method: (method || 'get').toUpperCase(),
+    muteHttpExceptions: true,
+    headers: buildLinkRouterHeaders_()
+  };
+  if (payload) {
+    options.payload = JSON.stringify(payload);
+    options.contentType = 'application/json';
+  }
+  var response;
+  try {
+    response = UrlFetchApp.fetch(url, options);
+  } catch (err) {
+    return { ok: false, statusCode: 0, body: { status: 'error', data: err && err.message ? err.message : String(err) } };
+  }
+  var statusCode = response.getResponseCode();
+  var text = response.getContentText();
+  var body;
+  try {
+    body = text ? JSON.parse(text) : {};
+  } catch (err) {
+    body = { status: 'error', data: text || 'Resposta inválida da API.' };
+  }
+  var ok = statusCode >= 200 && statusCode < 300;
+  if (!ok && body && typeof body === 'object') {
+    body.status = body.status || 'error';
+  }
+  return { ok: ok, statusCode: statusCode, body: body };
+}
+
+function buildLinkRouterHeaders_() {
+  return {
+    'Authorization': 'Bearer ' + getLinkRouterToken_(),
+    'Content-Type': 'application/json'
+  };
+}
+
+function getLinkRouterToken_() {
+  var token = String(LINK_ROUTER_TOKEN || '').trim();
+  if (/^Bearer\s+/i.test(token)) {
+    token = token.replace(/^Bearer\s+/i, '');
+  }
+  return token;
+}
+
+function formatLinkRouterError_(response) {
+  if (!response) {
+    return 'Erro desconhecido.';
+  }
+  if (response.body) {
+    var body = response.body;
+    if (body.message) {
+      return body.message;
+    }
+    if (typeof body.data === 'string' && body.data) {
+      return body.data;
+    }
+    if (body.data && typeof body.data === 'object') {
+      if (Array.isArray(body.data)) {
+        return body.data.join('; ');
+      }
+      var parts = [];
+      Object.keys(body.data).forEach(function (key) {
+        parts.push(key + ': ' + body.data[key]);
+      });
+      if (parts.length) {
+        return parts.join('; ');
+      }
+    }
+    if (body.status && body.status !== 'success') {
+      return 'Erro na API (' + body.status + ').';
+    }
+  }
+  if (response.statusCode) {
+    return 'Erro ' + response.statusCode + ' ao chamar a API.';
+  }
+  return 'Erro desconhecido na chamada da API.';
 }

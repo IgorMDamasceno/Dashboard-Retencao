@@ -427,7 +427,8 @@
         },
         detailedChart: null,
         detailedMetricMenuCleanup: null,
-        analysis: null
+        analysis: null,
+        syncingLinkRouter: false
       };
 
       document.addEventListener('DOMContentLoaded', function () {
@@ -2246,6 +2247,33 @@
           recalcularDistribuicao();
         });
         quickActions.appendChild(applyButton);
+
+        var syncButton = document.createElement('button');
+        syncButton.type = 'button';
+        syncButton.id = 'btn-distribuicao-sincronizar';
+        syncButton.className = 'inline-flex items-center gap-2 bg-sky-600 hover:bg-sky-500 text-white font-semibold px-5 py-2.5 rounded-xl shadow-lg shadow-sky-900/40 transition-all';
+        var canSync = integration && integration.companyId && integration.domainId && integration.routeSlug;
+        var isSyncing = !!state.syncingLinkRouter;
+        if (isSyncing) {
+          syncButton.innerHTML = '<svg class="w-5 h-5 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992m-5.614 3.72l3.536 3.536m-6.366-.964v4.992m-3.72-5.614l-3.536 3.536m.964-6.366H1.287m5.614-3.72L3.365 5.466m6.366.964V1.438m3.72 5.614l3.536-3.536" /></svg>Sincronizando...';
+        } else {
+          syncButton.innerHTML = '<svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992m-5.614 3.72l3.536 3.536m-6.366-.964v4.992m-3.72-5.614l-3.536 3.536m.964-6.366H1.287m5.614-3.72L3.365 5.466m6.366.964V1.438m3.72 5.614l3.536-3.536" /></svg>Sincronizar com API';
+        }
+        if (!canSync) {
+          syncButton.disabled = true;
+          syncButton.classList.add('opacity-60', 'cursor-not-allowed');
+          syncButton.title = 'Configure a integração do Link Router na aba Configuração.';
+        }
+        if (isSyncing) {
+          syncButton.disabled = true;
+          syncButton.classList.add('opacity-60', 'cursor-not-allowed');
+        } else if (canSync) {
+          syncButton.addEventListener('click', function (ev) {
+            ev.preventDefault();
+            sincronizarDistribuicao();
+          });
+        }
+        quickActions.appendChild(syncButton);
         card.appendChild(quickActions);
 
         var summary = document.createElement('p');
@@ -2775,6 +2803,73 @@
             startDate: state.filters.startDate,
             endDate: state.filters.endDate,
             urlWindow: state.filters.window,
+            distribution: getDistributionPayload()
+          });
+      }
+
+      function sincronizarDistribuicao() {
+        if (state.syncingLinkRouter) {
+          return;
+        }
+        if (!state.filters.operation || !state.filters.traffic) {
+          showToast('Aplique os filtros principais antes de sincronizar com a API.', 'error');
+          return;
+        }
+        var integration = state.analysis && state.analysis.integration ? state.analysis.integration : null;
+        if (!integration || !integration.companyId || !integration.domainId || !integration.routeSlug) {
+          showToast('Configure a integração do Link Router na aba Configuração antes de sincronizar.', 'error');
+          return;
+        }
+        var distribution = state.analysis && state.analysis.distribution ? state.analysis.distribution : null;
+        if (!distribution || !distribution.globalUrls || !distribution.globalUrls.all || !distribution.globalUrls.all.length) {
+          showToast('Nenhum plano de distribuição disponível para sincronização.', 'error');
+          return;
+        }
+        state.syncingLinkRouter = true;
+        renderAnalysis();
+        showLoading(true);
+        google.script.run
+          .withSuccessHandler(function (result) {
+            state.syncingLinkRouter = false;
+            showLoading(false);
+            if (result && result.dashboard) {
+              state.analysis = result.dashboard;
+              syncDistributionState(result.dashboard.distribution, true);
+            }
+            renderAnalysis();
+            var successMessage = result && result.message ? result.message : 'Percentuais sincronizados com sucesso.';
+            showToast(successMessage, 'success');
+            if (result) {
+              var notices = [];
+              if (result.leftoverShares && result.leftoverShares.length) {
+                var leftoverPreview = result.leftoverShares.slice(0, 3).map(function (item) {
+                  return (item.url || 'URL') + ' (' + formatShare(item.share || 0) + ')';
+                });
+                var leftoverExtra = result.leftoverShares.length > 3 ? ' +' + (result.leftoverShares.length - 3) + ' outras' : '';
+                notices.push('URLs sugeridas não encontradas na API: ' + leftoverPreview.join(', ') + leftoverExtra);
+              }
+              if (result.unmatchedLinks && result.unmatchedLinks.length) {
+                var unmatchedPreview = result.unmatchedLinks.slice(0, 3).map(function (url) { return url || 'URL'; });
+                var unmatchedExtra = result.unmatchedLinks.length > 3 ? ' +' + (result.unmatchedLinks.length - 3) + ' outras' : '';
+                notices.push('URLs da API sem correspondência no plano atual: ' + unmatchedPreview.join(', ') + unmatchedExtra);
+              }
+              notices.forEach(function (message) {
+                showToast(message, 'info');
+              });
+            }
+          })
+          .withFailureHandler(function (err) {
+            state.syncingLinkRouter = false;
+            showLoading(false);
+            renderAnalysis();
+            handleError(err);
+          })
+          .syncLinkRouterDistribution({
+            operation: state.filters.operation,
+            traffic: state.filters.traffic,
+            startDate: state.filters.startDate,
+            endDate: state.filters.endDate,
+            window: state.filters.window,
             distribution: getDistributionPayload()
           });
       }
