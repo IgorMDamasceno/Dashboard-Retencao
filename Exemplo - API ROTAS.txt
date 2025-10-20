@@ -1,0 +1,287 @@
+// Exemplo de USO - API ROTAS
+
+/**************************************
+ * Link Router – Apps Script (Planilhas)
+ * Menu: Link Router > (Buscar slugs | Carregar slug | Atualizar percentuais)
+ * Planilhas criadas:
+ *  - LinkRouter_Config   (BASE_URL | TOKEN | COMPANY_ID | DOMAIN_ID)
+ *  - LinkRouter_Slugs    (slug | total_links | labels | updated_last_hour)
+ *  - LinkRouter_Editar   (slug | link_id | url | percentage | error | status)
+ **************************************/
+
+const LR_SHEET_CONFIG = 'LinkRouter_Config';
+const LR_SHEET_SLUGS  = 'LinkRouter_Slugs';
+const LR_SHEET_EDIT   = 'LinkRouter_Editar';
+
+function onOpen() {
+  const ui = SpreadsheetApp.getUi();
+  ui.createMenu('Link Router')
+    .addItem('Configurar (criar abas)', 'lr_setup_')
+    .addSeparator()
+    .addItem('Buscar slugs…', 'lr_buscarSlugs')
+    .addItem('Carregar slug…', 'lr_carregarSlug')
+    .addSeparator()
+    .addItem('Atualizar percentuais', 'lr_atualizarPercentuais')
+    .addToUi();
+}
+
+function lr_setup_() {
+  const ss = SpreadsheetApp.getActive();
+  // Config
+  let cfg = ss.getSheetByName(LR_SHEET_CONFIG);
+  if (!cfg) cfg = ss.insertSheet(LR_SHEET_CONFIG);
+  cfg.clear();
+  cfg.getRange(1,1,1,4).setValues([['BASE_URL','TOKEN','COMPANY_ID','DOMAIN_ID']]);
+  cfg.getRange(2,1,1,4).setValues([['https://rotasv2.spun.com.br','','1','1']]);
+  cfg.autoResizeColumns(1,4);
+
+  // Slugs
+  let slugs = ss.getSheetByName(LR_SHEET_SLUGS);
+  if (!slugs) slugs = ss.insertSheet(LR_SHEET_SLUGS);
+  slugs.clear();
+  slugs.getRange(1,1,1,4).setValues([['slug','total_links','labels','updated_last_hour']]);
+  slugs.autoResizeColumns(1,4);
+
+  // Editar
+  let edit = ss.getSheetByName(LR_SHEET_EDIT);
+  if (!edit) edit = ss.insertSheet(LR_SHEET_EDIT);
+  edit.clear();
+  edit.getRange(1,1,1,6).setValues([['slug','link_id','url','percentage','error','status']]);
+  edit.autoResizeColumns(1,6);
+
+  SpreadsheetApp.getUi().alert('Abas criadas/atualizadas. Preencha o TOKEN/IDs em LinkRouter_Config.');
+}
+
+function lr_buscarSlugs() {
+  const ui = SpreadsheetApp.getUi();
+  const searchTerm = ui.prompt('Buscar slugs', 'Opcional: informe um filtro (parte do slug). Deixe vazio para todos.', ui.ButtonSet.OK_CANCEL);
+  if (searchTerm.getSelectedButton() !== ui.Button.OK) return;
+
+  const { baseUrl, token, companyId, domainId } = lr_getConfig_();
+  if (!baseUrl || !token || !companyId || !domainId) {
+    ui.alert('Preencha BASE_URL, TOKEN, COMPANY_ID e DOMAIN_ID em "'+LR_SHEET_CONFIG+'".');
+    return;
+  }
+
+  const perPage = 100;
+  let page = 1;
+  const rows = [];
+  while (true) {
+    const params = {
+      domain: domainId,
+      company_id: companyId,
+      searchFor: 'route',      // busca por rota (slug)
+      search: searchTerm.getResponseText() || '',
+      page,
+      perPage
+    };
+    const res = lr_fetch_(`${baseUrl}/api/link_router`, 'get', token, params, null, true);
+    if (!res || res.status !== 'success') {
+      ui.alert('Falha ao buscar slugs.\n' + JSON.stringify(res && res.data ? res.data : res));
+      return;
+    }
+    const data = res.data || [];
+    data.forEach(item => {
+      const labels = (item.labels || []).map(l => l.name).join(', ');
+      rows.push([item.slug, item.total_links || 0, labels, item.updated_last_hour || 0]);
+    });
+
+    // paginação simples: se veio menos que perPage, acabou
+    if (!res.total_pages || page >= res.total_pages) break;
+    page++;
+  }
+
+  const ss = SpreadsheetApp.getActive();
+  const sh = ss.getSheetByName(LR_SHEET_SLUGS);
+  sh.getRange(2,1,Math.max(rows.length,1),4).clearContent();
+  if (rows.length) sh.getRange(2,1,rows.length,4).setValues(rows);
+  ui.alert(`Slugs carregados: ${rows.length}`);
+}
+
+function lr_carregarSlug() {
+  const ui = SpreadsheetApp.getUi();
+  const slug = lr_pickSlugFromSheet_() || ui.prompt('Carregar slug', 'Informe o slug exato que deseja carregar:', ui.ButtonSet.OK_CANCEL).getResponseText();
+  if (!slug) return;
+
+  const { baseUrl, token, companyId, domainId } = lr_getConfig_();
+  if (!baseUrl || !token || !companyId || !domainId) {
+    ui.alert('Preencha BASE_URL, TOKEN, COMPANY_ID e DOMAIN_ID em "'+LR_SHEET_CONFIG+'".');
+    return;
+  }
+
+  // GET /api/link_router/route?domain=&company_id=&slug=
+  const params = { domain: domainId, company_id: companyId, slug };
+  const res = lr_fetch_(`${baseUrl}/api/link_router/route`, 'get', token, params, null, true);
+
+  if (!res || res.status !== 'success') {
+    ui.alert('Erro ao carregar slug.\n' + JSON.stringify(res && res.data ? res.data : res));
+    return;
+  }
+
+  const data = res.data || {};
+  const links = data.links || [];
+  const rows = links.map(l => [slug, l.id, l.link, ('' + l.percentage).replace('.', ','), l.error || 0, '']);
+  const sh = SpreadsheetApp.getActive().getSheetByName(LR_SHEET_EDIT);
+  sh.getRange(2,1,Math.max(rows.length,1),6).clearContent();
+  if (rows.length) sh.getRange(2,1,rows.length,6).setValues(rows);
+  sh.autoResizeColumns(1,6);
+  ui.alert(`Links carregados para "${slug}": ${rows.length}`);
+}
+
+function lr_atualizarPercentuais() {
+  const ui = SpreadsheetApp.getUi();
+  const { baseUrl, token, companyId, domainId } = lr_getConfig_();
+  if (!baseUrl || !token || !companyId || !domainId) {
+    ui.alert('Preencha BASE_URL, TOKEN, COMPANY_ID e DOMAIN_ID em "'+LR_SHEET_CONFIG+'".');
+    return;
+  }
+
+  const sh = SpreadsheetApp.getActive().getSheetByName(LR_SHEET_EDIT);
+  const last = sh.getLastRow();
+  if (last < 2) { ui.alert('Nada para atualizar em "'+LR_SHEET_EDIT+'".'); return; }
+
+  const values = sh.getRange(2,1,last-1,6).getValues();
+  if (!values.length) { ui.alert('Nada para atualizar.'); return; }
+
+  const slug = values[0][0];
+  // constrói payload exigido: link{ id: url }, percentage{ id: number }
+  const linkMap = {};
+  const pctMap  = {};
+
+  // validações + soma
+  let pctSum = 0;
+  let hasPct = false;
+  for (const row of values) {
+    const [slugCell, linkId, url, pctStr] = row;
+    if (!slugCell || !linkId) continue;
+
+    const pct = lr_parseNumber_(pctStr);
+    if (pct != null && pct !== '') {
+      hasPct = true;
+      pctSum += Number(pct);
+      pctMap[String(linkId)] = Number(pct);
+    }
+    if (url && String(url).trim()) {
+      linkMap[String(linkId)] = String(url).trim();
+    }
+  }
+
+  // opcional: exigir soma 100
+  if (hasPct) {
+    const rounded = Math.round((pctSum + Number.EPSILON) * 100) / 100;
+    if (Math.abs(rounded - 100) > 0.01) {
+      const proceed = ui.alert(
+        'Aviso',
+        `A soma dos percentuais está em ${rounded} (≠ 100). Deseja continuar mesmo assim?`,
+        ui.ButtonSet.YES_NO
+      );
+      if (proceed !== ui.Button.YES) return;
+    }
+  }
+
+  const payload = {
+    domain: Number(domainId),
+    company_id: Number(companyId),
+    slug: slug,
+    link: linkMap,
+    percentage: pctMap
+  };
+
+  const res = lr_fetch_(`${baseUrl}/api/link_router/links_and_percentage`, 'put', token, null, payload, true);
+  const ok = res && res.status === 'success';
+
+  // escreve status
+  for (let i = 0; i < values.length; i++) {
+    sh.getRange(2+i, 6).setValue(ok ? 'OK' : 'ERRO');
+  }
+
+  if (!ok) {
+    ui.alert('Falha ao atualizar.\n' + JSON.stringify(res && res.data ? res.data : res));
+  } else {
+    ui.alert('Percentuais/links atualizados com sucesso.');
+  }
+}
+
+/* -------------------- Helpers -------------------- */
+
+function lr_getConfig_() {
+  const ss = SpreadsheetApp.getActive();
+  const sh = ss.getSheetByName(LR_SHEET_CONFIG);
+  if (!sh) return { baseUrl:'', token:'', companyId:'', domainId:'' };
+
+  const vals = sh.getRange(2,1,1,4).getValues()[0];
+  const baseUrl  = String(vals[0] || '').trim();
+  const token    = String(vals[1] || '').trim() || PropertiesService.getScriptProperties().getProperty('LR_TOKEN') || '';
+  const companyId= String(vals[2] || '').trim();
+  const domainId = String(vals[3] || '').trim();
+
+  return { baseUrl, token, companyId, domainId };
+}
+
+/**
+ * Uso interno de UrlFetch com suporte a querystring e JSON.
+ */
+function lr_fetch_(url, method, token, qsObj, jsonBody, parseJson) {
+  let finalUrl = url;
+  if (qsObj && Object.keys(qsObj).length) {
+    const params = Object.keys(qsObj)
+      .filter(k => qsObj[k] !== undefined && qsObj[k] !== null && qsObj[k] !== '')
+      .map(k => encodeURIComponent(k) + '=' + encodeURIComponent(String(qsObj[k])))
+      .join('&');
+    finalUrl += (finalUrl.indexOf('?') >= 0 ? '&' : '?') + params;
+  }
+
+  const options = {
+    method: method.toUpperCase(),
+    muteHttpExceptions: true,
+    headers: {
+      'Authorization': 'Bearer ' + token,
+      'Content-Type': 'application/json'
+    }
+  };
+  if (jsonBody) options.payload = JSON.stringify(jsonBody);
+
+  const resp = UrlFetchApp.fetch(finalUrl, options);
+  const code = resp.getResponseCode();
+  const text = resp.getContentText();
+  let obj = null;
+
+  try { obj = parseJson ? JSON.parse(text) : text; } catch (e) { obj = { status: 'error', data: 'Resposta não-JSON', raw: text }; }
+
+  // Normaliza alguns erros comuns
+  if (code === 401) return { status: 'error', data: '401 Unauthorized: verifique o token.' };
+  if (code === 422 && typeof obj === 'object') return obj; // API já retorna {status:'error', data:[...]}
+  if (code >= 400 && typeof obj === 'object') return obj;
+  return obj;
+}
+
+/**
+ * Pega slug selecionado em LinkRouter_Slugs (primeira coluna) caso exista.
+ */
+function lr_pickSlugFromSheet_() {
+  const sh = SpreadsheetApp.getActive().getSheetByName(LR_SHEET_SLUGS);
+  if (!sh) return '';
+  const r = sh.getActiveRange();
+  if (!r || r.getColumn() !== 1) return '';
+  return String(r.getValue() || '').trim();
+}
+
+/**
+ * Converte "50,25" -> 50.25 | "50.25" -> 50.25 | vazio -> null
+ */
+function lr_parseNumber_(v) {
+  if (v === null || v === undefined) return null;
+  const s = String(v).trim().replace(/\./g, '').replace(',', '.'); // tolerante a "1.000,50"
+  if (s === '') return null;
+  const n = Number(s);
+  return isNaN(n) ? null : n;
+}
+
+/**
+ * Opcional: defina o token via Propriedades do Script (mais seguro que na planilha).
+ * Execute uma vez: setScriptToken_('SEU_TOKEN_AQUI');
+ */
+function setScriptToken_(token) {
+  PropertiesService.getScriptProperties().setProperty('LR_TOKEN', token);
+  SpreadsheetApp.getUi().alert('TOKEN salvo nas Propriedades do Script.');
+}
