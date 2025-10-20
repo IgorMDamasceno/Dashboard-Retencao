@@ -1312,6 +1312,38 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
     });
   });
 
+  var prioritySlots = Math.max(0, Math.round(controls.urlMinRecipients || 0));
+  var globalPriorityKeys = {};
+  if (prioritySlots > 0) {
+    var priorityCandidates = [];
+    siteRows.forEach(function (siteRow) {
+      var urls = siteRow.urls || [];
+      urls.forEach(function (entry) {
+        priorityCandidates.push({
+          key: entry.key,
+          performanceScore: entry.performanceScore || 0,
+          score: entry.score || 0,
+          ecpmEff: entry.ecpmEff || 0,
+          rps: entry.rps || 0
+        });
+      });
+    });
+    priorityCandidates.sort(function (a, b) {
+      var perfDiff = (b.performanceScore || 0) - (a.performanceScore || 0);
+      if (Math.abs(perfDiff) > 1e-6) return perfDiff;
+      var scoreDiff = (b.score || 0) - (a.score || 0);
+      if (Math.abs(scoreDiff) > 1e-6) return scoreDiff;
+      var ecpmDiff = (b.ecpmEff || 0) - (a.ecpmEff || 0);
+      if (Math.abs(ecpmDiff) > 1e-6) return ecpmDiff;
+      var rpsDiff = (b.rps || 0) - (a.rps || 0);
+      if (Math.abs(rpsDiff) > 1e-6) return rpsDiff;
+      return 0;
+    });
+    for (var p = 0; p < prioritySlots && p < priorityCandidates.length; p++) {
+      globalPriorityKeys[priorityCandidates[p].key] = true;
+    }
+  }
+
   var siteItems = siteRows.map(function (row) {
     var stateRow = siteStateMap[row.site] || {};
     var prevShare = stateRow.currentShare != null && stateRow.currentShare !== '' ? normalizeShareValue_(stateRow.currentShare) : null;
@@ -1428,7 +1460,7 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
     var requiredCount = 0;
     if (controls.urlRequireAll && siteUrls.length) {
       requiredCount = siteUrls.length;
-    } else if (!globalLimitEnabled) {
+    } else if (!globalLimitEnabled && prioritySlots === 0) {
       requiredCount = Math.min(siteUrls.length, Math.max(0, controls.urlMinRecipients));
     }
     if (requiredCount > 0 && siteUrls.length) {
@@ -1449,6 +1481,12 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
         requiredKeys[priority[r].key] = true;
       }
     }
+    siteUrls.forEach(function (entry) {
+      if (globalPriorityKeys[entry.key]) {
+        priorityKeys[entry.key] = true;
+        requiredKeys[entry.key] = true;
+      }
+    });
     siteUrls.forEach(function (entry) {
       var statusValue = String((entry.state && entry.state.status) || '').toLowerCase();
       if (statusValue === 'controle') {
