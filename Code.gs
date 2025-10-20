@@ -1226,30 +1226,6 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
       entry.explorationBonus = controls.ucbZ * Math.sqrt(lnR / (entry.rounds + 1));
     });
 
-    var maxRawScore = 0;
-    var maxEcpmEff = 0;
-    var maxRpsEff = 0;
-    urlEntries.forEach(function (entry) {
-      var scoreValue = Math.max(0, coerceNumber_(entry.score, 0));
-      var ecpmEffValue = Math.max(0, coerceNumber_(entry.ecpmEff, 0));
-      var rpsValue = Math.max(0, coerceNumber_(entry.rps, 0));
-      if (scoreValue > maxRawScore) maxRawScore = scoreValue;
-      if (ecpmEffValue > maxEcpmEff) maxEcpmEff = ecpmEffValue;
-      if (rpsValue > maxRpsEff) maxRpsEff = rpsValue;
-    });
-
-    urlEntries.forEach(function (entry) {
-      var normalizedScore = maxRawScore > 0 ? Math.max(0, coerceNumber_(entry.score, 0)) / maxRawScore : 0;
-      var normalizedEcpm = maxEcpmEff > 0 ? Math.max(0, coerceNumber_(entry.ecpmEff, 0)) / maxEcpmEff : 0;
-      var normalizedRps = maxRpsEff > 0 ? Math.max(0, coerceNumber_(entry.rps, 0)) / maxRpsEff : 0;
-      var components = [normalizedScore, normalizedEcpm, normalizedRps];
-      entry.performanceScore = components.length ? average_(components) : 0;
-      entry.normalizedScore = normalizedScore;
-      entry.normalizedEcpmEff = normalizedEcpm;
-      entry.normalizedRpsEff = normalizedRps;
-      entry.ucbScore = entry.performanceScore + entry.explorationBonus;
-    });
-
     var apostas = false;
     if (urlEntries.length) {
       var sortedByRps = urlEntries.slice().sort(function (a, b) { return b.rps - a.rps; });
@@ -1301,6 +1277,40 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
       }
     };
   }
+
+  var globalMaxScore = 0;
+  var globalMaxEcpmEff = 0;
+  var globalMaxRps = 0;
+  siteRows.forEach(function (siteRow) {
+    var urls = siteRow.urls || [];
+    urls.forEach(function (entry) {
+      var scoreValue = Math.max(0, coerceNumber_(entry.score, 0));
+      var ecpmEffValue = Math.max(0, coerceNumber_(entry.ecpmEff, 0));
+      var rpsValue = Math.max(0, coerceNumber_(entry.rps, 0));
+      if (scoreValue > globalMaxScore) globalMaxScore = scoreValue;
+      if (ecpmEffValue > globalMaxEcpmEff) globalMaxEcpmEff = ecpmEffValue;
+      if (rpsValue > globalMaxRps) globalMaxRps = rpsValue;
+    });
+  });
+
+  siteRows.forEach(function (siteRow) {
+    var urls = siteRow.urls || [];
+    urls.forEach(function (entry) {
+      var normalizedScore = globalMaxScore > 0 ? Math.max(0, coerceNumber_(entry.score, 0)) / globalMaxScore : 0;
+      var normalizedEcpm = globalMaxEcpmEff > 0 ? Math.max(0, coerceNumber_(entry.ecpmEff, 0)) / globalMaxEcpmEff : 0;
+      var normalizedRps = globalMaxRps > 0 ? Math.max(0, coerceNumber_(entry.rps, 0)) / globalMaxRps : 0;
+      var components = [];
+      if (globalMaxScore > 0) components.push(normalizedScore);
+      if (globalMaxEcpmEff > 0) components.push(normalizedEcpm);
+      if (globalMaxRps > 0) components.push(normalizedRps);
+      if (!components.length) components.push(0);
+      entry.normalizedScore = normalizedScore;
+      entry.normalizedEcpmEff = normalizedEcpm;
+      entry.normalizedRpsEff = normalizedRps;
+      entry.performanceScore = average_(components);
+      entry.ucbScore = entry.performanceScore + entry.explorationBonus;
+    });
+  });
 
   var siteItems = siteRows.map(function (row) {
     var stateRow = siteStateMap[row.site] || {};
