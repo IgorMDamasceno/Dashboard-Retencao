@@ -185,8 +185,13 @@ function getDashboardData(params) {
   if (!hoursInfo.allHours.length) {
     return buildEmptyDashboardResponse_();
   }
-  const siteSummary = buildSiteSummary_(filteredRows, hoursInfo, snapshot.revshareMap);
   const urlRows = filterRowsForWindow_(filteredRows, hoursInfo, window);
+  const siteSummary = buildSiteSummary_(
+    filteredRows,
+    hoursInfo,
+    snapshot.revshareMap,
+    urlRows
+  );
   const urlSummary = buildUrlSummary_(urlRows, snapshot.revshareMap);
   const detailed = buildDetailedAnalysis_(filteredRows, hoursInfo, snapshot.revshareMap);
 
@@ -386,7 +391,7 @@ function getHourTimeline_(rows) {
   };
 }
 
-function buildSiteSummary_(rows, hoursInfo, revshareMap) {
+function buildSiteSummary_(rows, hoursInfo, revshareMap, totalRows) {
   var siteMap = {};
   var hourKeys = hoursInfo.windowHours.map(function (h) { return h.key; });
   rows.forEach(function (row) {
@@ -394,17 +399,12 @@ function buildSiteSummary_(rows, hoursInfo, revshareMap) {
     if (!siteMap[siteKey]) {
       siteMap[siteKey] = {
         site: siteKey,
-        totals: { sessions: 0, revenue: 0 },
         hours: {}
       };
     }
     var siteData = siteMap[siteKey];
     var revshare = toNumber_(revshareMap[siteKey] || 0) / 100;
     var adjustedRevenue = row.revenue * (1 - revshare);
-    if (row.isInterstitial) {
-      siteData.totals.sessions += row.requests;
-    }
-    siteData.totals.revenue += adjustedRevenue;
     if (!siteData.hours[row.timestamp]) {
       siteData.hours[row.timestamp] = { sessions: 0, revenue: 0 };
     }
@@ -412,6 +412,22 @@ function buildSiteSummary_(rows, hoursInfo, revshareMap) {
       siteData.hours[row.timestamp].sessions += row.requests;
     }
     siteData.hours[row.timestamp].revenue += adjustedRevenue;
+  });
+
+  var totalInput = Array.isArray(totalRows) ? totalRows : rows;
+  var siteTotalsMap = {};
+  totalInput.forEach(function (row) {
+    var siteKey = row.site;
+    if (!siteTotalsMap[siteKey]) {
+      siteTotalsMap[siteKey] = { sessions: 0, revenue: 0 };
+    }
+    var totalsData = siteTotalsMap[siteKey];
+    var revshare = toNumber_(revshareMap[siteKey] || 0) / 100;
+    var adjustedRevenue = row.revenue * (1 - revshare);
+    if (row.isInterstitial) {
+      totalsData.sessions += row.requests;
+    }
+    totalsData.revenue += adjustedRevenue;
   });
 
   var rowsOut = [];
@@ -428,14 +444,15 @@ function buildSiteSummary_(rows, hoursInfo, revshareMap) {
 
   Object.keys(siteMap).sort().forEach(function (siteKey) {
     var siteData = siteMap[siteKey];
+    var siteTotals = siteTotalsMap[siteKey] || { sessions: 0, revenue: 0 };
     var rowOut = {
       site: siteKey,
       sessions: {},
       revenue: {},
       rps: {},
-      totalSessions: siteData.totals.sessions,
-      totalRevenue: siteData.totals.revenue,
-      totalRps: computeRps_(siteData.totals.revenue, siteData.totals.sessions)
+      totalSessions: siteTotals.sessions,
+      totalRevenue: siteTotals.revenue,
+      totalRps: computeRps_(siteTotals.revenue, siteTotals.sessions)
     };
     hourKeys.forEach(function (key) {
       var hourData = siteData.hours[key] || { sessions: 0, revenue: 0 };
@@ -445,8 +462,8 @@ function buildSiteSummary_(rows, hoursInfo, revshareMap) {
       totals.sessions[key] += hourData.sessions;
       totals.revenue[key] += hourData.revenue;
     });
-    totals.totalSessions += siteData.totals.sessions;
-    totals.totalRevenue += siteData.totals.revenue;
+    totals.totalSessions += siteTotals.sessions;
+    totals.totalRevenue += siteTotals.revenue;
     rowsOut.push(rowOut);
   });
 
