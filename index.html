@@ -2137,7 +2137,7 @@
 
         var params = (state.distribution && state.distribution.params) || distribution.controls || {};
         var fields = [
-          { key: 'totalSessions', label: 'Sessões alvo', type: 'number', step: 500, min: 1000, decimals: 0 },
+          { key: 'totalSessions', label: 'Sessões alvo', type: 'number', step: 100, min: 1, decimals: 0 },
           { key: 'tau', label: 'Temperatura global (τ)', type: 'number', step: 1, min: 1, decimals: 0 },
           { key: 'tauLocal', label: 'Temperatura local (τ local)', type: 'number', step: 1, min: 1, decimals: 0 },
           { key: 'reliabilityK', label: 'K de confiabilidade', type: 'number', step: 10, min: 0, decimals: 0 },
@@ -2531,6 +2531,29 @@
             meta.innerHTML += '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-slate-900/70 border border-slate-700/60">Próx: ' + escapeHtml(row.nextEval) + '</span>';
           }
           item.appendChild(meta);
+          if (row.score != null || row.baseScore != null) {
+            var scoreWeight = Math.max(0, Math.min(1, Number(row.weight || 0)));
+            var complementWeight = Math.max(0, Math.min(1, 1 - scoreWeight));
+            var scoreValue = row.score != null ? row.score : 0;
+            var ucbValue = row.ucb != null ? row.ucb : null;
+            var baseValue = row.baseScore != null ? row.baseScore : 0;
+            var urlScoreComponent = row.ecpmScore != null ? row.ecpmScore : 0;
+            var siteScoreComponent = row.siteEcpmScore != null ? row.siteEcpmScore : 0;
+            var momentumFactor = row.momentumFactor != null ? row.momentumFactor : 1;
+            var scoreBox = document.createElement('div');
+            scoreBox.className = 'w-full rounded-lg bg-slate-900/60 border border-slate-700/50 p-3 space-y-1 text-xs leading-snug text-slate-300';
+            var scoreLine = document.createElement('div');
+            scoreLine.className = 'text-slate-100 font-semibold';
+            scoreLine.textContent = 'Score: ' + formatScore(scoreValue) + ' • UCB: ' + (ucbValue !== null ? formatScore(ucbValue) : '—');
+            scoreBox.appendChild(scoreLine);
+            var baseLine = document.createElement('div');
+            baseLine.textContent = 'Base ' + formatScore(baseValue) + ' = ' + formatPercentFraction(scoreWeight) + ' × ' + formatScore(urlScoreComponent) + ' + ' + formatPercentFraction(complementWeight) + ' × ' + formatScore(siteScoreComponent);
+            scoreBox.appendChild(baseLine);
+            var momentumLine = document.createElement('div');
+            momentumLine.textContent = 'Fator momentum ×' + formatMultiplier(momentumFactor) + ' (' + formatTrend(row.momentum || 0) + ')';
+            scoreBox.appendChild(momentumLine);
+            item.appendChild(scoreBox);
+          }
           if (row.reason) {
             var reason = document.createElement('div');
             reason.className = 'text-xs text-slate-400 leading-snug';
@@ -3220,6 +3243,21 @@
         var sign = number > 0 ? '+' : '-';
         var formatted = Math.abs(number).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' %';
         return sign + formatted;
+      }
+
+      function formatScore(value) {
+        var number = Number(value || 0);
+        return number.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      }
+
+      function formatMultiplier(value) {
+        var number = Number(value || 0);
+        return number.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+      }
+
+      function formatPercentFraction(value) {
+        var number = Number(value || 0) * 100;
+        return number.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' %';
       }
 
       function formatTrend(value) {

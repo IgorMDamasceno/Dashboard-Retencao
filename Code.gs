@@ -1013,7 +1013,7 @@ function buildDistributionControls_(params) {
     var value = params.hasOwnProperty(key) ? params[key] : defaults[key];
     var parsed = coerceNumber_(value, defaults[key]);
     if (key === 'totalSessions') {
-      controls[key] = Math.max(1000, Math.round(parsed));
+      controls[key] = Math.max(1, Math.round(parsed));
     } else if (key === 'tau' || key === 'tauLocal') {
       controls[key] = Math.max(1, parsed);
     } else if (key === 'reliabilityK' || key === 'siteMinSessions' || key === 'urlSeedSessions' || key === 'urlMinRecipients' || key === 'urlTargetRecipients') {
@@ -1210,6 +1210,9 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
     urlEntries.forEach(function (entry) {
       var scoreBase = entry.weight * entry.ecpmScore + (1 - entry.weight) * siteEcpmScore;
       var momentumFactor = 1 + 0.15 * clamp_(entry.momentum, -0.5, 0.5);
+      entry.baseScore = scoreBase;
+      entry.momentumFactor = momentumFactor;
+      entry.siteEcpmScore = siteEcpmScore;
       entry.score = scoreBase * momentumFactor;
       roundsTotal += entry.rounds;
       roundsCount++;
@@ -1287,7 +1290,8 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
   });
 
   var siteSoftmax = computeSoftmaxShares_(siteItems, controls.tau, 'score');
-  var minSiteShare = Math.max(controls.siteMinShare, controls.siteMinSessions / controls.totalSessions);
+  var minSiteShareBase = controls.totalSessions > 0 ? (controls.siteMinSessions / controls.totalSessions) : 0;
+  var minSiteShare = Math.max(controls.siteMinShare, minSiteShareBase);
   var siteBounds = siteItems.map(function (item) {
     var minBound = clamp_(minSiteShare, 0, 1);
     var maxBound = clamp_(controls.siteMaxShare, minBound, 1);
@@ -1467,6 +1471,11 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
         rounds: entry.rounds,
         score: entry.score,
         ucb: entry.ucbScore,
+        weight: entry.weight,
+        ecpmScore: entry.ecpmScore,
+        siteEcpmScore: entry.siteEcpmScore,
+        baseScore: entry.baseScore,
+        momentumFactor: entry.momentumFactor,
         currentShare: urlCurrentShare,
         suggestedShare: urlSuggestedShare,
         deltaShare: urlDeltaShare,
@@ -1751,6 +1760,21 @@ function describeUrlAllocationReason_(row, siteCtx, controls, index, totalCount,
   parts.push(intro + '.');
   parts.push('Dentro do site recebe ' + siteShareText + ' do tráfego sugerido.');
 
+  var scoreValue = toNumber_(row && row.score != null ? row.score : 0);
+  var baseScore = toNumber_(row && row.baseScore != null ? row.baseScore : 0);
+  var momentumFactor = toNumber_(row && row.momentumFactor != null ? row.momentumFactor : 1);
+  var weightValue = clamp_(toNumber_(row && row.weight != null ? row.weight : 0), 0, 1);
+  var complementWeight = clamp_(1 - weightValue, 0, 1);
+  var urlScoreComponent = toNumber_(row && row.ecpmScore != null ? row.ecpmScore : 0);
+  var siteScoreComponent = toNumber_(row && row.siteEcpmScore != null ? row.siteEcpmScore : 0);
+  if ((row && row.score != null) || (row && row.baseScore != null)) {
+    parts.push('Score ' + formatScoreValue_(scoreValue, 2) + ' (base ' + formatScoreValue_(baseScore, 2) + ' × momentum ' + formatScoreValue_(momentumFactor, 3) + ').');
+    parts.push('Base = ' + formatPercentDisplay_(weightValue * 100, 1) + ' da URL (' + formatScoreValue_(urlScoreComponent, 2) + ') + ' + formatPercentDisplay_(complementWeight * 100, 1) + ' do site (' + formatScoreValue_(siteScoreComponent, 2) + ').');
+  }
+  if (row && row.ucb != null) {
+    parts.push('UCB ' + formatScoreValue_(row.ucb, 2) + ' para exploração.');
+  }
+
   var rankText = 'Prioridade global #' + (index + 1) + ' de ' + totalCount + '.';
   parts.push(rankText);
 
@@ -1832,6 +1856,13 @@ function formatCurrencyValue_(value, decimals) {
   var factor = Math.pow(10, dec);
   var amount = Math.round(toNumber_(value) * factor) / factor;
   return '$' + amount.toFixed(dec);
+}
+
+function formatScoreValue_(value, decimals) {
+  var dec = decimals != null ? decimals : 2;
+  var factor = Math.pow(10, dec);
+  var amount = Math.round(toNumber_(value) * factor) / factor;
+  return amount.toFixed(dec);
 }
 
 function formatPercentDisplay_(value, decimals) {
