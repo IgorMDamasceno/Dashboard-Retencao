@@ -133,6 +133,7 @@ function saveOperationIntegrationConfig(payload) {
   } else {
     sheet.appendRow(rowValues);
   }
+  updateLinkRouterAutoSyncTrigger_();
   return getConfigData();
 }
 
@@ -150,6 +151,7 @@ function deleteOperationIntegrationConfig(id) {
       break;
     }
   }
+  updateLinkRouterAutoSyncTrigger_();
   return getConfigData();
 }
 
@@ -2612,6 +2614,9 @@ function syncLinkRouterDistribution(request) {
     throw new Error('Plano de distribuição indisponível para sincronização.');
   }
 
+  var executionMode = String(request.mode || '').toLowerCase() === 'auto' ? 'auto' : 'manual';
+  var historyOriginSuffix = executionMode === 'auto' ? ' (Execução automática)' : '';
+
   var shareState = buildLinkRouterShareState_(distribution);
   var routeResponse = fetchLinkRouterRoute_(integration.companyId, integration.domainId, integration.routeSlug);
   if (!routeResponse.ok || !routeResponse.body || routeResponse.body.status !== 'success') {
@@ -2661,7 +2666,7 @@ function syncLinkRouterDistribution(request) {
       integration.routeSlug,
       linkUrl,
       percent,
-      shareInfo ? 'Plano sugerido' : 'Mantido existente',
+      (shareInfo ? 'Plano sugerido' : 'Mantido existente') + historyOriginSuffix,
       '',
       ''
     ]);
@@ -2727,6 +2732,99 @@ function syncLinkRouterDistribution(request) {
 function parseLinkRouterId_(value) {
   var num = Number(value);
   return isNaN(num) ? value : num;
+}
+
+function runLinkRouterAutoSync() {
+  var snapshot = getConfigSnapshot_();
+  var integrations = (snapshot.operationIntegrationRows || []).filter(function (row) {
+    return row && row.active && row.operation && row.companyId && row.domainId && row.routeSlug;
+  });
+  var trafficByType = snapshot.trafficByType || {};
+  var successes = [];
+  var failures = [];
+
+  integrations.forEach(function (integration) {
+    TRAFFIC_TYPES.forEach(function (trafficType) {
+      var sources = trafficByType[trafficType] || [];
+      if (!sources.length) {
+        return;
+      }
+      try {
+        var result = syncLinkRouterDistribution({
+          operation: integration.operation,
+          traffic: trafficType,
+          window: 'day',
+          mode: 'auto'
+        });
+        successes.push({
+          operation: integration.operation,
+          traffic: trafficType,
+          linksUpdated: result && result.linksUpdated ? result.linksUpdated : 0,
+          unmatchedLinks: result && result.unmatchedLinks ? result.unmatchedLinks.length : 0,
+          leftoverShares: result && result.leftoverShares ? result.leftoverShares.length : 0
+        });
+      } catch (err) {
+        failures.push({
+          operation: integration.operation,
+          traffic: trafficType,
+          message: err && err.message ? err.message : String(err)
+        });
+        logLinkRouterAutoSyncFailure_(integration, trafficType, err);
+      }
+    });
+  });
+
+  updateLinkRouterAutoSyncTrigger_(snapshot);
+
+  return {
+    timestamp: new Date(),
+    successes: successes,
+    failures: failures
+  };
+}
+
+function updateLinkRouterAutoSyncTrigger_(snapshot) {
+  snapshot = snapshot || getConfigSnapshot_();
+  var hasActiveIntegration = (snapshot.operationIntegrationRows || []).some(function (row) {
+    return row && row.active && row.operation && row.companyId && row.domainId && row.routeSlug;
+  });
+  var triggers = ScriptApp.getProjectTriggers().filter(function (trigger) {
+    return trigger.getHandlerFunction && trigger.getHandlerFunction() === 'runLinkRouterAutoSync';
+  });
+
+  if (hasActiveIntegration) {
+    if (triggers.length) {
+      triggers.forEach(function (trigger) {
+        ScriptApp.deleteTrigger(trigger);
+      });
+    }
+    ScriptApp.newTrigger('runLinkRouterAutoSync')
+      .timeBased()
+      .everyHours(4)
+      .create();
+  } else if (triggers.length) {
+    triggers.forEach(function (trigger) {
+      ScriptApp.deleteTrigger(trigger);
+    });
+  }
+}
+
+function logLinkRouterAutoSyncFailure_(integration, trafficType, error) {
+  var message = error && error.message ? error.message : String(error || 'Erro desconhecido');
+  var row = [
+    new Date(),
+    integration && integration.operation ? integration.operation : '',
+    trafficType || '',
+    integration && integration.companyId ? integration.companyId : '',
+    integration && integration.domainId ? integration.domainId : '',
+    integration && integration.routeSlug ? integration.routeSlug : '',
+    '',
+    '',
+    'Execução automática',
+    'ERRO',
+    message
+  ];
+  appendLinkRouterHistory_([row]);
 }
 
 function appendLinkRouterHistory_(rows) {
