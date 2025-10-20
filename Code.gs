@@ -1354,12 +1354,14 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
     if (!siteUrls.length) {
       baseShareMap = {};
     } else if (siteRow.apostas) {
-      var exploitMap = computeSoftmaxShares_(exploit, controls.tauLocal, 'ucbScore');
-      var exploreMap = explore.length ? computeSoftmaxShares_(explore, controls.tauLocal, 'ucbScore') : {};
+      var exploitMap = computeAdaptiveSoftmaxShares_(exploit, controls.tauLocal, 'ucbScore');
+      var exploreMap = explore.length ? computeAdaptiveSoftmaxShares_(explore, controls.tauLocal, 'ucbScore') : {};
       siteUrls.forEach(function (entry) { baseShareMap[entry.key] = 0; });
-      exploit.forEach(function (entry) {
-        baseShareMap[entry.key] += controls.exploitPortion * (exploitMap[entry.key] || 0);
-      });
+      if (exploit.length) {
+        exploit.forEach(function (entry) {
+          baseShareMap[entry.key] += controls.exploitPortion * (exploitMap[entry.key] || 0);
+        });
+      }
       if (explore.length) {
         explore.forEach(function (entry) {
           baseShareMap[entry.key] += controls.explorePortion * (exploreMap[entry.key] || 0);
@@ -1374,10 +1376,10 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
         });
       }
       if (!exploit.length) {
-        baseShareMap = computeSoftmaxShares_(siteUrls, controls.tauLocal, 'ucbScore');
+        baseShareMap = computeAdaptiveSoftmaxShares_(siteUrls, controls.tauLocal, 'ucbScore');
       }
     } else {
-      baseShareMap = computeSoftmaxShares_(siteUrls, controls.tauLocal, 'ucbScore');
+      baseShareMap = computeAdaptiveSoftmaxShares_(siteUrls, controls.tauLocal, 'ucbScore');
     }
 
     var requiredKeys = {};
@@ -2461,6 +2463,43 @@ function computeSoftmaxShares_(items, tau, scoreKey) {
     result[item.key] = exps[index] / sum;
   });
   return result;
+}
+
+function computeAdaptiveSoftmaxShares_(items, tau, scoreKey) {
+  if (!items || !items.length) {
+    return {};
+  }
+  if (items.length === 1) {
+    var single = {};
+    single[items[0].key] = 1;
+    return single;
+  }
+  var baseTau = Math.max(coerceNumber_(tau, 1), 0.0001);
+  var scores = items.map(function (item) {
+    var value = scoreKey ? item[scoreKey] : item.score;
+    return coerceNumber_(value, 0);
+  });
+  var sortedScores = scores.slice().sort(function (a, b) { return b - a; });
+  var topScore = sortedScores[0];
+  var runnerUp = sortedScores.length > 1 ? sortedScores[1] : topScore;
+  var medianScore = sortedScores[Math.floor(sortedScores.length / 2)];
+  var meanScore = average_(scores);
+  var stdScore = standardDeviation_(scores);
+  var scale = Math.max(
+    Math.abs(topScore),
+    Math.abs(runnerUp),
+    Math.abs(medianScore),
+    Math.abs(meanScore),
+    1
+  );
+  var dominance = Math.max(0, topScore - runnerUp, topScore - medianScore) / scale;
+  var dispersion = stdScore > 0 ? stdScore / scale : 0;
+  var intensity = Math.min(3, Math.max(dominance, dispersion));
+  var effectiveTau = baseTau / Math.max(1, 1 + 3 * intensity);
+  if (effectiveTau < 0.35) {
+    effectiveTau = 0.35;
+  }
+  return computeSoftmaxShares_(items, effectiveTau, scoreKey);
 }
 
 function normalizeSharesWithBounds_(items) {
