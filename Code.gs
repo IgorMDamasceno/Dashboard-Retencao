@@ -1,5 +1,6 @@
 const DATA_SHEET = 'BD – GAM';
 const OPERATIONS_SHEET = 'Config - Operações';
+const OPERATION_INTEGRATION_SHEET = 'Config - Operação API';
 const TRAFFIC_SHEET = 'Config - Trafego';
 const REVSHARE_SHEET = 'Config - RevShare';
 const TRAFFIC_TYPES = ['Automação', 'Broadcast', 'Push'];
@@ -17,6 +18,7 @@ function getConfigData() {
   const snapshot = getConfigSnapshot_();
   return {
     operations: snapshot.operationRows,
+    operationIntegrations: snapshot.operationIntegrationRows,
     traffics: snapshot.trafficRows,
     revshare: snapshot.revshareRows,
     trafficTypes: TRAFFIC_TYPES.slice()
@@ -78,6 +80,73 @@ function deleteOperationConfig(id) {
     }
   }
   refreshRevShareSites_();
+  return getConfigData();
+}
+
+function saveOperationIntegrationConfig(payload) {
+  if (!payload) throw new Error('Dados inválidos.');
+  var operation = String(payload.operation || '').trim();
+  if (!operation) {
+    throw new Error('Selecione a operação.');
+  }
+  var companyId = String(payload.companyId || '').trim();
+  var domainId = String(payload.domainId || '').trim();
+  var routeSlug = String(payload.routeSlug || '').trim();
+  var active = !!payload.active;
+  if (active && (!companyId || !domainId || !routeSlug)) {
+    throw new Error('Informe Empresa ID, Domínio ID e Slug da rota para ativar.');
+  }
+  const sheet = ensureOperationIntegrationSheet_();
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const idx = getHeaderIndexMap_(headers);
+  var id = String(payload.id || '').trim();
+  var lastRow = sheet.getLastRow();
+  var range = lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues() : [];
+  var targetRow = -1;
+  if (id) {
+    for (var i = 0; i < range.length; i++) {
+      if (String(range[i][idx.id] || '').trim() === id) {
+        targetRow = i + 2;
+        break;
+      }
+    }
+  }
+  if (targetRow === -1) {
+    for (var j = 0; j < range.length; j++) {
+      if (String(range[j][idx.operacao] || '').trim() === operation) {
+        targetRow = j + 2;
+        id = String(range[j][idx.id] || '').trim() || Utilities.getUuid();
+        break;
+      }
+    }
+  }
+  if (!id) {
+    id = Utilities.getUuid();
+  }
+  var statusValue = active ? 'Ativo' : 'Inativo';
+  var rowValues = [id, operation, companyId, domainId, routeSlug, statusValue];
+  if (targetRow > -1) {
+    sheet.getRange(targetRow, 1, 1, rowValues.length).setValues([rowValues]);
+  } else {
+    sheet.appendRow(rowValues);
+  }
+  return getConfigData();
+}
+
+function deleteOperationIntegrationConfig(id) {
+  if (!id) return getConfigData();
+  const sheet = ensureOperationIntegrationSheet_();
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return getConfigData();
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const idx = getHeaderIndexMap_(headers);
+  const values = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
+  for (var i = 0; i < values.length; i++) {
+    if (String(values[i][idx.id] || '').trim() === String(id)) {
+      sheet.deleteRow(i + 2);
+      break;
+    }
+  }
   return getConfigData();
 }
 
@@ -1757,12 +1826,14 @@ function formatPercentDisplay_(value, decimals) {
 
 function getConfigSnapshot_() {
   const operationSheet = ensureOperationsSheet_();
+  const operationIntegrationSheet = ensureOperationIntegrationSheet_();
   const trafficSheet = ensureTrafficSheet_();
   const revSheet = ensureRevShareSheet_();
 
   refreshRevShareSites_();
 
   const operationValues = getSheetValues_(operationSheet);
+  const operationIntegrationValues = getSheetValues_(operationIntegrationSheet);
   const trafficValues = getSheetValues_(trafficSheet);
   const revValues = getSheetValues_(revSheet);
 
@@ -1781,6 +1852,23 @@ function getConfigSnapshot_() {
     if (!name) return;
     if (!operationsByName[name]) operationsByName[name] = [];
     operationsByName[name].push(row.url);
+  });
+
+  const operationIntegrationRows = operationIntegrationValues.rows.map(function (row) {
+    var rawActive = row.ativo;
+    return {
+      id: row.id,
+      operation: row.operacao,
+      companyId: row.empresaid,
+      domainId: row.dominioid,
+      routeSlug: row.slugrota,
+      active: coerceBoolean_(rawActive)
+    };
+  });
+  const operationIntegrationsByOperation = {};
+  operationIntegrationRows.forEach(function (row) {
+    if (!row.operation) return;
+    operationIntegrationsByOperation[row.operation] = row;
   });
 
   const trafficRows = trafficValues.rows.map(function (row) {
@@ -1810,6 +1898,8 @@ function getConfigSnapshot_() {
 
   return {
     operationRows: operationRows,
+    operationIntegrationRows: operationIntegrationRows,
+    operationIntegrationsByOperation: operationIntegrationsByOperation,
     operationsByName: operationsByName,
     trafficRows: trafficRows,
     trafficByType: trafficByType,
@@ -1839,7 +1929,11 @@ function getSheetValues_(sheet) {
       tipo: pickValue_(rowValues, idx, 'tipo'),
       utm_source: pickValue_(rowValues, idx, 'utmsource'),
       site: pickValue_(rowValues, idx, 'site'),
-      revshare: pickValue_(rowValues, idx, 'revshare')
+      revshare: pickValue_(rowValues, idx, 'revshare'),
+      empresaid: pickValue_(rowValues, idx, 'empresaid'),
+      dominioid: pickValue_(rowValues, idx, 'dominioid'),
+      slugrota: pickValue_(rowValues, idx, 'slugrota'),
+      ativo: pickValue_(rowValues, idx, 'ativo')
     });
   }
   return { headers: headers, rows: rows };
@@ -1908,6 +2002,18 @@ function ensureOperationsSheet_() {
     sheet = ss.insertSheet(OPERATIONS_SHEET);
   }
   var headers = ['ID', 'Operação', 'URL', 'Observação'];
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  sheet.setFrozenRows(1);
+  return sheet;
+}
+
+function ensureOperationIntegrationSheet_() {
+  var ss = SpreadsheetApp.getActive();
+  var sheet = ss.getSheetByName(OPERATION_INTEGRATION_SHEET);
+  if (!sheet) {
+    sheet = ss.insertSheet(OPERATION_INTEGRATION_SHEET);
+  }
+  var headers = ['ID', 'Operação', 'Empresa ID', 'Domínio ID', 'Slug Rota', 'Ativo?'];
   sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
   sheet.setFrozenRows(1);
   return sheet;
@@ -2249,6 +2355,21 @@ function coerceNumber_(value, fallback) {
     return fallback != null ? fallback : 0;
   }
   return num;
+}
+
+function coerceBoolean_(value) {
+  if (value === true) return true;
+  if (value === false) return false;
+  if (typeof value === 'number') {
+    if (isNaN(value)) return false;
+    return value !== 0;
+  }
+  var str = String(value || '').trim().toLowerCase();
+  if (!str) return false;
+  if (str === '0' || str === 'false' || str === 'nao' || str === 'não' || str === 'inativo' || str === 'off') {
+    return false;
+  }
+  return ['1', 'true', 'sim', 'yes', 'ativo', 'on', 'y'].indexOf(str) !== -1;
 }
 
 function normalizeShareValue_(value) {

@@ -241,6 +241,61 @@
       </div>
 
       <div class="card rounded-2xl p-6 space-y-5">
+        <div class="flex items-center justify-between gap-3 flex-wrap">
+          <h2 class="text-lg font-semibold text-slate-100">Integração de Operações com API</h2>
+          <button id="btn-reset-operacao-integracao" class="text-xs text-slate-400 hover:text-slate-200">Limpar formulário</button>
+        </div>
+        <form id="form-operacao-integracao" class="grid md:grid-cols-5 gap-4">
+          <input type="hidden" id="operacao-integracao-id" />
+          <div class="md:col-span-2">
+            <label class="block text-sm text-slate-400 mb-1">Operação</label>
+            <select id="operacao-integracao-operacao" class="w-full pill rounded-lg px-3 py-2 bg-slate-900/40 text-slate-100">
+              <option value="">— selecione —</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm text-slate-400 mb-1">Empresa ID</label>
+            <input id="operacao-integracao-empresa" class="w-full pill rounded-lg px-3 py-2 bg-slate-900/40 text-slate-100" placeholder="Ex: 123" />
+          </div>
+          <div>
+            <label class="block text-sm text-slate-400 mb-1">Domínio ID</label>
+            <input id="operacao-integracao-dominio" class="w-full pill rounded-lg px-3 py-2 bg-slate-900/40 text-slate-100" placeholder="Ex: 456" />
+          </div>
+          <div class="md:col-span-2">
+            <label class="block text-sm text-slate-400 mb-1">Slug da rota</label>
+            <input id="operacao-integracao-slug" class="w-full pill rounded-lg px-3 py-2 bg-slate-900/40 text-slate-100" placeholder="Ex: ofertas-retencao" />
+          </div>
+          <div class="flex items-center gap-2 md:col-span-3">
+            <input id="operacao-integracao-ativo" type="checkbox" class="w-4 h-4 rounded border-slate-600 bg-slate-900/60" />
+            <label for="operacao-integracao-ativo" class="text-sm text-slate-300">Ativar automação (atualiza porcentagens a cada 4h)</label>
+          </div>
+          <div class="md:col-span-5 flex gap-3">
+            <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white font-semibold px-4 py-2 rounded-xl">Salvar</button>
+            <button type="button" id="btn-operacao-integracao-cancel" class="pill px-4 py-2 rounded-xl">Cancelar</button>
+          </div>
+        </form>
+        <div class="flex items-center justify-between gap-3 flex-wrap">
+          <label for="operacao-integracao-busca" class="text-xs uppercase tracking-wide text-slate-400">Filtrar</label>
+          <input id="operacao-integracao-busca" type="search" class="pill px-3 py-2 rounded-lg bg-slate-900/40 text-sm text-slate-100 w-full md:w-80" placeholder="Buscar por operação, IDs ou slug" />
+        </div>
+        <div class="overflow-auto scroll-list-10">
+          <table class="w-full text-sm min-w-full">
+            <thead class="text-slate-400 text-left">
+              <tr>
+                <th class="py-2 px-2 font-semibold">Operação</th>
+                <th class="py-2 px-2 font-semibold">Empresa ID</th>
+                <th class="py-2 px-2 font-semibold">Domínio ID</th>
+                <th class="py-2 px-2 font-semibold">Slug rota</th>
+                <th class="py-2 px-2 font-semibold">Status</th>
+                <th class="py-2 px-2 font-semibold w-32">Ações</th>
+              </tr>
+            </thead>
+            <tbody id="operacao-integracao-lista" class="divide-y divide-slate-800/60"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card rounded-2xl p-6 space-y-5">
         <h2 class="text-lg font-semibold text-slate-100">Configurar Tráfego e utm_source</h2>
         <form id="form-trafego" class="grid md:grid-cols-3 gap-4">
           <input type="hidden" id="trafego-id" />
@@ -327,11 +382,14 @@
       var state = {
         config: {
           operations: [],
+          operationIntegrations: [],
           traffics: [],
           revshare: [],
           trafficTypes: []
         },
         groupedOperations: [],
+        operationIntegrationOptions: [],
+        operationIntegrationMap: {},
         trafficByType: {},
         filters: {
           operation: '',
@@ -348,6 +406,7 @@
         },
         search: {
           operations: '',
+          operationIntegrations: '',
           traffics: '',
           revshare: '',
           url: ''
@@ -414,6 +473,21 @@
           ev.preventDefault();
           salvarOperacao();
         });
+        var integrationReset = document.getElementById('btn-reset-operacao-integracao');
+        if (integrationReset) {
+          integrationReset.addEventListener('click', resetOperacaoIntegracaoForm);
+        }
+        var integrationCancel = document.getElementById('btn-operacao-integracao-cancel');
+        if (integrationCancel) {
+          integrationCancel.addEventListener('click', resetOperacaoIntegracaoForm);
+        }
+        var integrationForm = document.getElementById('form-operacao-integracao');
+        if (integrationForm) {
+          integrationForm.addEventListener('submit', function (ev) {
+            ev.preventDefault();
+            salvarOperacaoIntegracao();
+          });
+        }
         document.getElementById('form-trafego').addEventListener('submit', function (ev) {
           ev.preventDefault();
           salvarTrafego();
@@ -428,6 +502,14 @@
           opSearch.addEventListener('input', function (ev) {
             state.search.operations = ev.target.value;
             renderOperacoesTabela();
+          });
+        }
+        var opIntegrationSearch = document.getElementById('operacao-integracao-busca');
+        if (opIntegrationSearch) {
+          opIntegrationSearch.value = state.search.operationIntegrations || '';
+          opIntegrationSearch.addEventListener('input', function (ev) {
+            state.search.operationIntegrations = ev.target.value;
+            renderOperacaoIntegracaoTabela();
           });
         }
         var trafegoSearch = document.getElementById('trafego-busca');
@@ -476,6 +558,19 @@
         state.groupedOperations = Object.keys(grouped).map(function (key) { return grouped[key]; }).sort(function (a, b) {
           return a.name.localeCompare(b.name, 'pt-BR');
         });
+        var integrationOptions = {};
+        state.groupedOperations.forEach(function (group) {
+          integrationOptions[group.name] = true;
+        });
+        state.operationIntegrationMap = {};
+        (state.config.operationIntegrations || []).forEach(function (item) {
+          if (!item || !item.operation) return;
+          integrationOptions[item.operation] = true;
+          state.operationIntegrationMap[item.operation] = item;
+        });
+        state.operationIntegrationOptions = Object.keys(integrationOptions).sort(function (a, b) {
+          return a.localeCompare(b, 'pt-BR');
+        });
         var trafficByType = {};
         (state.config.traffics || []).forEach(function (item) {
           if (!item || !item.type) return;
@@ -518,6 +613,7 @@
 
       function renderConfig() {
         renderOperacoesTabela();
+        renderOperacaoIntegracaoTabela();
         renderTrafegoTabela();
         renderRevshareTabela();
         renderTrafegoSelect();
@@ -591,6 +687,105 @@
               })
               .withFailureHandler(handleError)
               .deleteOperationConfig(id);
+          });
+        });
+      }
+
+      function renderOperacaoIntegracaoTabela() {
+        var tbody = document.getElementById('operacao-integracao-lista');
+        if (!tbody) return;
+        var select = document.getElementById('operacao-integracao-operacao');
+        if (select) {
+          var currentValue = select.value;
+          select.innerHTML = '';
+          var placeholder = document.createElement('option');
+          placeholder.value = '';
+          placeholder.textContent = '— selecione —';
+          select.appendChild(placeholder);
+          state.operationIntegrationOptions.forEach(function (name) {
+            var opt = document.createElement('option');
+            opt.value = name;
+            opt.textContent = name;
+            select.appendChild(opt);
+          });
+          if (currentValue && state.operationIntegrationOptions.indexOf(currentValue) !== -1) {
+            select.value = currentValue;
+          } else {
+            select.value = '';
+          }
+        }
+        tbody.innerHTML = '';
+        var searchValue = (state.search.operationIntegrations || '').trim().toLowerCase();
+        var input = document.getElementById('operacao-integracao-busca');
+        if (input && input.value !== state.search.operationIntegrations) {
+          input.value = state.search.operationIntegrations || '';
+        }
+        var items = (state.config.operationIntegrations || []).slice();
+        if (!items.length) {
+          tbody.innerHTML = '<tr><td colspan="6" class="px-2 py-3 text-center text-slate-400">Nenhuma operação integrada.</td></tr>';
+          return;
+        }
+        if (searchValue) {
+          items = items.filter(function (item) {
+            return ['operation', 'companyId', 'domainId', 'routeSlug'].some(function (key) {
+              return String(item[key] || '').toLowerCase().indexOf(searchValue) !== -1;
+            }) || (item.active ? 'ativo' : 'inativo').indexOf(searchValue) !== -1;
+          });
+        }
+        if (!items.length) {
+          tbody.innerHTML = '<tr><td colspan="6" class="px-2 py-3 text-center text-slate-400">Nenhum resultado para o filtro informado.</td></tr>';
+          return;
+        }
+        items.sort(function (a, b) {
+          return (a.operation || '').localeCompare(b.operation || '', 'pt-BR');
+        }).forEach(function (item) {
+          var statusClass = item.active ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-700/40 text-slate-300';
+          var statusLabel = item.active ? 'Ativo' : 'Inativo';
+          var tr = document.createElement('tr');
+          tr.innerHTML = [
+            '<td class="px-2 py-2 align-top">' + escapeHtml(item.operation || '') + '</td>',
+            '<td class="px-2 py-2 align-top text-slate-300">' + escapeHtml(item.companyId || '') + '</td>',
+            '<td class="px-2 py-2 align-top text-slate-300">' + escapeHtml(item.domainId || '') + '</td>',
+            '<td class="px-2 py-2 align-top text-sky-300 break-all">' + escapeHtml(item.routeSlug || '') + '</td>',
+            '<td class="px-2 py-2 align-top"><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ' + statusClass + '">' + statusLabel + '</span></td>',
+            '<td class="px-2 py-2 align-top"><div class="flex gap-2">' +
+              '<button class="px-2 py-1 pill rounded-lg text-xs" data-action="edit" data-id="' + escapeHtml(item.id || '') + '">Editar</button>' +
+              '<button class="px-2 py-1 bg-rose-600 hover:bg-rose-500 rounded-lg text-xs text-white" data-action="delete" data-id="' + escapeHtml(item.id || '') + '">Remover</button>' +
+            '</div></td>'
+          ].join('');
+          tbody.appendChild(tr);
+        });
+        tbody.querySelectorAll('button[data-action="edit"]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var id = btn.getAttribute('data-id');
+            var found = (state.config.operationIntegrations || []).find(function (item) { return item.id === id; });
+            if (!found) return;
+            document.getElementById('operacao-integracao-id').value = found.id || '';
+            document.getElementById('operacao-integracao-operacao').value = found.operation || '';
+            document.getElementById('operacao-integracao-empresa').value = found.companyId || '';
+            document.getElementById('operacao-integracao-dominio').value = found.domainId || '';
+            document.getElementById('operacao-integracao-slug').value = found.routeSlug || '';
+            document.getElementById('operacao-integracao-ativo').checked = !!found.active;
+          });
+        });
+        tbody.querySelectorAll('button[data-action="delete"]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var id = btn.getAttribute('data-id');
+            if (!id) return;
+            if (!confirm('Remover esta integração?')) return;
+            showLoading(true);
+            google.script.run
+              .withSuccessHandler(function (data) {
+                showLoading(false);
+                showToast('Integração removida.', 'success');
+                resetOperacaoIntegracaoForm();
+                state.config = data;
+                prepareConfig();
+                renderConfig();
+                renderFilters();
+              })
+              .withFailureHandler(handleError)
+              .deleteOperationIntegrationConfig(id);
           });
         });
       }
@@ -771,6 +966,38 @@
           .saveOperationConfig(payload);
       }
 
+      function salvarOperacaoIntegracao() {
+        var payload = {
+          id: document.getElementById('operacao-integracao-id').value,
+          operation: document.getElementById('operacao-integracao-operacao').value,
+          companyId: document.getElementById('operacao-integracao-empresa').value,
+          domainId: document.getElementById('operacao-integracao-dominio').value,
+          routeSlug: document.getElementById('operacao-integracao-slug').value,
+          active: document.getElementById('operacao-integracao-ativo').checked
+        };
+        if (!payload.operation) {
+          showToast('Selecione a operação.', 'error');
+          return;
+        }
+        if (payload.active && (!payload.companyId || !payload.domainId || !payload.routeSlug)) {
+          showToast('Informe Empresa ID, Domínio ID e Slug da rota para ativar.', 'error');
+          return;
+        }
+        showLoading(true);
+        google.script.run
+          .withSuccessHandler(function (data) {
+            showLoading(false);
+            showToast('Integração salva.', 'success');
+            resetOperacaoIntegracaoForm();
+            state.config = data;
+            prepareConfig();
+            renderConfig();
+            renderFilters();
+          })
+          .withFailureHandler(handleError)
+          .saveOperationIntegrationConfig(payload);
+      }
+
       function salvarTrafego() {
         var payload = {
           id: document.getElementById('trafego-id').value,
@@ -805,6 +1032,18 @@
         document.getElementById('operacao-nome').value = '';
         document.getElementById('operacao-url').value = '';
         document.getElementById('operacao-nota').value = '';
+      }
+
+      function resetOperacaoIntegracaoForm() {
+        document.getElementById('operacao-integracao-id').value = '';
+        var select = document.getElementById('operacao-integracao-operacao');
+        if (select) {
+          select.value = '';
+        }
+        document.getElementById('operacao-integracao-empresa').value = '';
+        document.getElementById('operacao-integracao-dominio').value = '';
+        document.getElementById('operacao-integracao-slug').value = '';
+        document.getElementById('operacao-integracao-ativo').checked = false;
       }
 
       function resetTrafegoForm() {
