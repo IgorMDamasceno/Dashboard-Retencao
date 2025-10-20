@@ -228,6 +228,7 @@ function getDashboardData(params) {
   const trafficType = String(params.traffic || '').trim();
   if (!operationName) throw new Error('Selecione a operação.');
   if (!trafficType) throw new Error('Selecione o tráfego.');
+  const integrationConfig = snapshot.operationIntegrationsByOperation[operationName] || null;
   const operationUrls = snapshot.operationsByName[operationName];
   if (!operationUrls || !operationUrls.length) {
     throw new Error('Operação sem URLs configuradas.');
@@ -306,7 +307,15 @@ function getDashboardData(params) {
     site: siteSummary,
     url: urlSummary,
     detailed: detailed,
-    distribution: distribution
+    distribution: distribution,
+    integration: integrationConfig ? {
+      id: integrationConfig.id || '',
+      operation: integrationConfig.operation || '',
+      companyId: integrationConfig.companyId || '',
+      domainId: integrationConfig.domainId || '',
+      routeSlug: integrationConfig.routeSlug || '',
+      active: !!integrationConfig.active
+    } : null
   };
 }
 
@@ -328,7 +337,8 @@ function buildEmptyDashboardResponse_() {
       urls: [],
       sites: []
     },
-    distribution: buildEmptyDistribution_()
+    distribution: buildEmptyDistribution_(),
+    integration: null
   };
 }
 

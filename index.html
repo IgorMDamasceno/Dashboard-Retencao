@@ -691,6 +691,38 @@
         });
       }
 
+      function attachOperacaoIntegracaoSelectHandler(select) {
+        if (!select) return;
+        if (select._integrationChangeHandler) {
+          select.removeEventListener('change', select._integrationChangeHandler);
+        }
+        var handler = function (ev) {
+          var operation = ev.target.value;
+          var map = state.operationIntegrationMap || {};
+          var idInput = document.getElementById('operacao-integracao-id');
+          var companyInput = document.getElementById('operacao-integracao-empresa');
+          var domainInput = document.getElementById('operacao-integracao-dominio');
+          var slugInput = document.getElementById('operacao-integracao-slug');
+          var activeInput = document.getElementById('operacao-integracao-ativo');
+          var record = operation ? map[operation] : null;
+          if (record) {
+            if (idInput) idInput.value = record.id || '';
+            if (companyInput) companyInput.value = record.companyId || '';
+            if (domainInput) domainInput.value = record.domainId || '';
+            if (slugInput) slugInput.value = record.routeSlug || '';
+            if (activeInput) activeInput.checked = !!record.active;
+          } else {
+            if (idInput) idInput.value = '';
+            if (companyInput) companyInput.value = '';
+            if (domainInput) domainInput.value = '';
+            if (slugInput) slugInput.value = '';
+            if (activeInput) activeInput.checked = false;
+          }
+        };
+        select._integrationChangeHandler = handler;
+        select.addEventListener('change', handler);
+      }
+
       function renderOperacaoIntegracaoTabela() {
         var tbody = document.getElementById('operacao-integracao-lista');
         if (!tbody) return;
@@ -713,6 +745,7 @@
           } else {
             select.value = '';
           }
+          attachOperacaoIntegracaoSelectHandler(select);
         }
         tbody.innerHTML = '';
         var searchValue = (state.search.operationIntegrations || '').trim().toLowerCase();
@@ -1115,7 +1148,12 @@
         }
         wrapper.appendChild(renderAnalysisTabs(data));
         if (state.analysisTab === 'distribution') {
-          document.getElementById('latest-info').textContent = buildDistributionInfo(data && data.distribution);
+          var infoParts = [];
+          var distributionInfo = buildDistributionInfo(data && data.distribution);
+          if (distributionInfo) infoParts.push(distributionInfo);
+          var integrationInfo = buildIntegrationInfo(data && data.integration);
+          if (integrationInfo) infoParts.push(integrationInfo);
+          document.getElementById('latest-info').textContent = infoParts.join(' • ');
           renderDistributionView(data && data.distribution, wrapper);
           return;
         }
@@ -1242,6 +1280,22 @@
         }
         if (distribution.hours && distribution.hours.length) {
           infoParts.push('Horas base: ' + distribution.hours.join(', '));
+        }
+        return infoParts.join(' • ');
+      }
+
+      function buildIntegrationInfo(integration) {
+        if (!integration) return 'Integração não configurada';
+        var infoParts = [];
+        infoParts.push(integration.active ? 'Automação ativa' : 'Automação inativa');
+        if (integration.companyId) {
+          infoParts.push('Empresa ' + integration.companyId);
+        }
+        if (integration.domainId) {
+          infoParts.push('Domínio ' + integration.domainId);
+        }
+        if (integration.routeSlug) {
+          infoParts.push('Slug ' + integration.routeSlug);
         }
         return infoParts.join(' • ');
       }
@@ -2051,7 +2105,8 @@
           return;
         }
         resolveDistributionSelection(distribution);
-        wrapper.appendChild(renderDistributionControlsCard(distribution));
+        var integration = state.analysis && state.analysis.integration ? state.analysis.integration : null;
+        wrapper.appendChild(renderDistributionControlsCard(distribution, integration));
         wrapper.appendChild(renderDistributionSitesCard(distribution));
         var globalCard = renderDistributionGlobalUrlsCard(distribution);
         if (globalCard) {
@@ -2060,7 +2115,7 @@
         wrapper.appendChild(renderDistributionUrlsCard(distribution));
       }
 
-      function renderDistributionControlsCard(distribution) {
+      function renderDistributionControlsCard(distribution, integration) {
         var card = document.createElement('div');
         card.className = 'card rounded-2xl p-6 space-y-4';
         var header = document.createElement('div');
@@ -2076,6 +2131,8 @@
           header.appendChild(badge);
         }
         card.appendChild(header);
+
+        card.appendChild(renderDistributionIntegrationSummary(integration));
 
         var params = (state.distribution && state.distribution.params) || distribution.controls || {};
         var fields = [
@@ -2197,6 +2254,74 @@
         card.appendChild(summary);
 
         return card;
+      }
+
+      function renderDistributionIntegrationSummary(integration) {
+        var container = document.createElement('div');
+        container.className = 'rounded-xl border border-slate-700/60 bg-slate-900/40 p-4 space-y-3';
+        var header = document.createElement('div');
+        header.className = 'flex items-center justify-between flex-wrap gap-2';
+        var title = document.createElement('span');
+        title.className = 'text-sm font-semibold text-slate-200';
+        title.textContent = 'Integração Link Router';
+        header.appendChild(title);
+        var status = document.createElement('span');
+        status.className = 'inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border ';
+        var configured = !!integration;
+        var active = configured && !!integration.active;
+        var statusIcon = '';
+        var statusText = '';
+        if (active) {
+          status.className += 'bg-emerald-500/15 text-emerald-300 border-emerald-400/40';
+          statusIcon = '<svg class="w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>';
+          statusText = 'Automação ativa';
+        } else if (configured) {
+          status.className += 'bg-amber-500/15 text-amber-200 border-amber-400/40';
+          statusIcon = '<svg class="w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9.75 9v6.75m4.5-6.75V15.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>';
+          statusText = 'Automação inativa';
+        } else {
+          status.className += 'bg-slate-800/60 text-slate-300 border-slate-600/50';
+          statusIcon = '<svg class="w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 6l12 12M6 18L18 6" /></svg>';
+          statusText = 'Integração não configurada';
+        }
+        status.innerHTML = statusIcon + statusText;
+        header.appendChild(status);
+        container.appendChild(header);
+
+        var createDetail = function (label, value) {
+          var block = document.createElement('div');
+          var labelEl = document.createElement('span');
+          labelEl.className = 'text-[0.65rem] uppercase tracking-wide text-slate-500';
+          labelEl.textContent = label;
+          block.appendChild(labelEl);
+          var valueEl = document.createElement('span');
+          valueEl.className = 'block text-sm font-semibold text-slate-200 break-all';
+          valueEl.textContent = value || '—';
+          block.appendChild(valueEl);
+          return block;
+        };
+
+        if (configured) {
+          var grid = document.createElement('div');
+          grid.className = 'grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-xs text-slate-300';
+          grid.appendChild(createDetail('Operação', integration.operation || '—'));
+          grid.appendChild(createDetail('Empresa ID', integration.companyId || '—'));
+          grid.appendChild(createDetail('Domínio ID', integration.domainId || '—'));
+          grid.appendChild(createDetail('Slug rota', integration.routeSlug || '—'));
+          container.appendChild(grid);
+
+          var hint = document.createElement('p');
+          hint.className = 'text-xs text-slate-400';
+          hint.textContent = active ? 'Sincronização automática com o Link Router executará a cada 4h.' : 'Ative a automação para sincronizar as porcentagens a cada 4h.';
+          container.appendChild(hint);
+        } else {
+          var message = document.createElement('p');
+          message.className = 'text-xs text-slate-400';
+          message.textContent = 'Configure a integração na aba Configuração para habilitar o envio automático ao Link Router.';
+          container.appendChild(message);
+        }
+
+        return container;
       }
 
       function renderDistributionSitesCard(distribution) {
