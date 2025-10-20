@@ -988,6 +988,7 @@ function getDefaultDistributionControls_() {
     urlSeedSessions: 50,
     urlMinRecipients: 3,
     urlTargetRecipients: 0,
+    urlPriorityShare: 0.7,
     urlRequireAll: 0,
     urlMaxShare: 0.4,
     urlStep: 0.35,
@@ -1022,6 +1023,8 @@ function buildDistributionControls_(params) {
       controls[key] = Math.max(0, parsed);
     } else if (key === 'urlRequireAll') {
       controls[key] = parsed ? 1 : 0;
+    } else if (key === 'urlPriorityShare') {
+      controls[key] = Math.max(0, Math.min(1, parsed));
     } else {
       controls[key] = Math.max(0, parsed);
     }
@@ -1220,7 +1223,31 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
     var R = Math.max(roundsTotal, roundsCount, 1);
     var lnR = Math.log(R + 1);
     urlEntries.forEach(function (entry) {
-      entry.ucbScore = entry.score + controls.ucbZ * Math.sqrt(lnR / (entry.rounds + 1));
+      entry.explorationBonus = controls.ucbZ * Math.sqrt(lnR / (entry.rounds + 1));
+    });
+
+    var maxRawScore = 0;
+    var maxEcpmEff = 0;
+    var maxRpsEff = 0;
+    urlEntries.forEach(function (entry) {
+      var scoreValue = Math.max(0, coerceNumber_(entry.score, 0));
+      var ecpmEffValue = Math.max(0, coerceNumber_(entry.ecpmEff, 0));
+      var rpsValue = Math.max(0, coerceNumber_(entry.rps, 0));
+      if (scoreValue > maxRawScore) maxRawScore = scoreValue;
+      if (ecpmEffValue > maxEcpmEff) maxEcpmEff = ecpmEffValue;
+      if (rpsValue > maxRpsEff) maxRpsEff = rpsValue;
+    });
+
+    urlEntries.forEach(function (entry) {
+      var normalizedScore = maxRawScore > 0 ? Math.max(0, coerceNumber_(entry.score, 0)) / maxRawScore : 0;
+      var normalizedEcpm = maxEcpmEff > 0 ? Math.max(0, coerceNumber_(entry.ecpmEff, 0)) / maxEcpmEff : 0;
+      var normalizedRps = maxRpsEff > 0 ? Math.max(0, coerceNumber_(entry.rps, 0)) / maxRpsEff : 0;
+      var components = [normalizedScore, normalizedEcpm, normalizedRps];
+      entry.performanceScore = components.length ? average_(components) : 0;
+      entry.normalizedScore = normalizedScore;
+      entry.normalizedEcpmEff = normalizedEcpm;
+      entry.normalizedRpsEff = normalizedRps;
+      entry.ucbScore = entry.performanceScore + entry.explorationBonus;
     });
 
     var apostas = false;
@@ -1348,7 +1375,7 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
     var promising = siteUrls.filter(function (entry) {
       return entry.momentum > controls.momentumExploreThreshold && entry.coverageRatio >= controls.coverageExploreThreshold;
     });
-    var exploit = siteUrls.slice().sort(function (a, b) { return b.score - a.score; }).slice(0, Math.min(3, siteUrls.length));
+    var exploit = siteUrls.slice().sort(function (a, b) { return (b.performanceScore || 0) - (a.performanceScore || 0); }).slice(0, Math.min(3, siteUrls.length));
     var explore = siteRow.apostas ? promising : [];
     if (siteRow.apostas && !explore.length) {
       explore = siteUrls.slice().sort(function (a, b) { return a.rounds - b.rounds; }).slice(0, Math.min(3, siteUrls.length));
@@ -1387,6 +1414,7 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
     }
 
     var requiredKeys = {};
+    var priorityKeys = {};
     var requiredCount = 0;
     if (controls.urlRequireAll && siteUrls.length) {
       requiredCount = siteUrls.length;
@@ -1395,14 +1423,19 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
     }
     if (requiredCount > 0 && siteUrls.length) {
       var priority = siteUrls.slice().sort(function (a, b) {
-        var aBase = baseShareMap[a.key] != null ? baseShareMap[a.key] : 0;
-        var bBase = baseShareMap[b.key] != null ? baseShareMap[b.key] : 0;
-        if (bBase === aBase) {
-          return b.score - a.score;
+        var perfDiff = (b.performanceScore || 0) - (a.performanceScore || 0);
+        if (Math.abs(perfDiff) > 1e-6) {
+          return perfDiff;
         }
-        return bBase - aBase;
+        var bBase = baseShareMap[b.key] != null ? baseShareMap[b.key] : 0;
+        var aBase = baseShareMap[a.key] != null ? baseShareMap[a.key] : 0;
+        if (Math.abs(bBase - aBase) > 1e-6) {
+          return bBase - aBase;
+        }
+        return (b.score || 0) - (a.score || 0);
       });
       for (var r = 0; r < requiredCount && r < priority.length; r++) {
+        priorityKeys[priority[r].key] = true;
         requiredKeys[priority[r].key] = true;
       }
     }
@@ -1420,6 +1453,8 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
         prevShare = normalizeShareValue_(stateEntry.lastShare);
       }
       var isRequired = !!requiredKeys[entry.key];
+      var isPriority = !!priorityKeys[entry.key];
+      entry.isPriority = isPriority;
       var minBound = isRequired ? minSeedShare : 0;
       if (String(stateEntry.status || '').toLowerCase() === 'controle') {
         minBound = Math.max(minBound, controls.controlReserve);
@@ -1439,9 +1474,52 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
         prevShare: prevShare,
         entry: entry,
         state: stateEntry,
-        required: isRequired
+        required: isRequired,
+        priority: isPriority
       };
     });
+
+    var desiredPriorityShare = clamp_(controls.urlPriorityShare != null ? controls.urlPriorityShare : 0, 0, 1);
+    var priorityItems = urlItems.filter(function (item) { return item.priority; });
+    var complementaryItems = urlItems.filter(function (item) { return !item.priority; });
+    if (priorityItems.length && (desiredPriorityShare > 0 || !complementaryItems.length)) {
+      var allocationPriorityShare = complementaryItems.length ? desiredPriorityShare : 1;
+      var priorityWeight = priorityItems.reduce(function (acc, item) {
+        return acc + Math.max(0, item.entry.performanceScore || 0);
+      }, 0);
+      if (priorityWeight <= 0) {
+        priorityWeight = priorityItems.length;
+      }
+      priorityItems.forEach(function (item) {
+        var weight = Math.max(0, item.entry.performanceScore || 0);
+        if (priorityWeight <= 0) {
+          item.value = allocationPriorityShare / priorityItems.length;
+        } else {
+          item.value = allocationPriorityShare * (weight > 0 ? weight / priorityWeight : 1 / priorityItems.length);
+        }
+      });
+      var remainingShare = Math.max(0, 1 - allocationPriorityShare);
+      if (complementaryItems.length) {
+        if (remainingShare <= 0) {
+          complementaryItems.forEach(function (item) { item.value = 0; });
+        } else {
+          var complementaryWeight = complementaryItems.reduce(function (acc, item) {
+            return acc + Math.max(0, item.entry.performanceScore || 0);
+          }, 0);
+          if (complementaryWeight <= 0) {
+            complementaryWeight = complementaryItems.length;
+          }
+          complementaryItems.forEach(function (item) {
+            var weight = Math.max(0, item.entry.performanceScore || 0);
+            if (complementaryWeight <= 0) {
+              item.value = remainingShare / complementaryItems.length;
+            } else {
+              item.value = remainingShare * (weight > 0 ? weight / complementaryWeight : 1 / complementaryItems.length);
+            }
+          });
+        }
+      }
+    }
 
     normalizeSharesWithBounds_(urlItems);
 
@@ -1471,6 +1549,11 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
         rounds: entry.rounds,
         score: entry.score,
         ucb: entry.ucbScore,
+        performanceScore: entry.performanceScore,
+        performanceNormalizedScore: entry.normalizedScore,
+        performanceNormalizedEcpm: entry.normalizedEcpmEff,
+        performanceNormalizedRps: entry.normalizedRpsEff,
+        explorationBonus: entry.explorationBonus,
         weight: entry.weight,
         ecpmScore: entry.ecpmScore,
         siteEcpmScore: entry.siteEcpmScore,
@@ -1489,6 +1572,7 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
         deltaGlobalShare: deltaGlobalShare,
         guaranteed: !!item.required,
         limited: false,
+        priority: !!item.priority,
         siteEcpmEff: siteRow.ecpmEff,
         siteCoverage: siteRow.coverage,
         siteMode: siteRow.apostas ? 'Apostas' : 'Normal',
@@ -1514,7 +1598,11 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
     });
     var sortedForSelection = globalAggregates.slice().sort(function (a, b) {
       var shareDiff = (b.suggestedGlobalShare || 0) - (a.suggestedGlobalShare || 0);
-      if (shareDiff !== 0) return shareDiff;
+      if (Math.abs(shareDiff) > 1e-6) return shareDiff;
+      var priorityDiff = (b.priority ? 1 : 0) - (a.priority ? 1 : 0);
+      if (priorityDiff !== 0) return priorityDiff;
+      var perfDiff = (b.performanceScore || 0) - (a.performanceScore || 0);
+      if (Math.abs(perfDiff) > 1e-6) return perfDiff;
       return (b.score || 0) - (a.score || 0);
     });
     var selectedCount = Object.keys(selectedKeys).length;
@@ -1534,7 +1622,13 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
       var hasSelected = siteRowsList.some(function (row) { return selectedKeys[row.key]; });
       if (!hasSelected) {
         var bestRow = siteRowsList.slice().sort(function (a, b) {
-          return (b.suggestedGlobalShare || 0) - (a.suggestedGlobalShare || 0);
+          var shareDiff = (b.suggestedGlobalShare || 0) - (a.suggestedGlobalShare || 0);
+          if (Math.abs(shareDiff) > 1e-6) return shareDiff;
+          var priorityDiff = (b.priority ? 1 : 0) - (a.priority ? 1 : 0);
+          if (priorityDiff !== 0) return priorityDiff;
+          var perfDiff = (b.performanceScore || 0) - (a.performanceScore || 0);
+          if (Math.abs(perfDiff) > 1e-6) return perfDiff;
+          return (b.score || 0) - (a.score || 0);
         })[0];
         if (bestRow && selectedCount < targetRecipients) {
           selectedKeys[bestRow.key] = true;
@@ -1673,9 +1767,15 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
   var sortedGlobal = globalAggregates.slice().sort(function (a, b) {
     return (b.suggestedGlobalShare || 0) - (a.suggestedGlobalShare || 0);
   });
+  var priorityShareAccum = 0;
+  var priorityActiveCount = 0;
   sortedGlobal.forEach(function (row, index) {
     var siteCtx = siteContextMap[row.site] || {};
     row.reason = describeUrlAllocationReason_(row, siteCtx, controls, index, sortedGlobal.length, limitApplied);
+    if (row.priority && (row.suggestedGlobalShare || 0) > 0) {
+      priorityActiveCount++;
+      priorityShareAccum += row.suggestedGlobalShare || 0;
+    }
   });
   var activeCount = sortedGlobal.filter(function (row) { return (row.suggestedGlobalShare || 0) > 0; }).length;
   var totalCount = sortedGlobal.length;
@@ -1693,7 +1793,11 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
     activeCount: activeCount,
     totalCount: totalCount,
     targetRecipients: requestedRecipients,
-    limitApplied: limitApplied
+    limitApplied: limitApplied,
+    priorityShareTarget: controls.urlPriorityShare || 0,
+    priorityCount: Math.max(0, Math.round(controls.urlMinRecipients || 0)),
+    priorityActive: priorityActiveCount,
+    priorityShareActual: priorityShareAccum
   };
 
   return {
@@ -1759,6 +1863,19 @@ function describeUrlAllocationReason_(row, siteCtx, controls, index, totalCount,
   }
   parts.push(intro + '.');
   parts.push('Dentro do site recebe ' + siteShareText + ' do tráfego sugerido.');
+  if (row && row.priority) {
+    var targetPriorityShare = controls && controls.urlPriorityShare != null ? controls.urlPriorityShare : 0;
+    if (targetPriorityShare > 0) {
+      parts.push('No grupo prioritário (' + formatShareValue_(targetPriorityShare, 1) + ' do tráfego reservado).');
+    } else {
+      parts.push('No grupo prioritário definido manualmente.');
+    }
+  } else if (controls && controls.urlMinRecipients > 0 && controls.urlPriorityShare > 0 && !controls.urlRequireAll) {
+    var residualShare = Math.max(0, 1 - controls.urlPriorityShare);
+    if (residualShare > 0) {
+      parts.push('Distribuição dentro do grupo complementar (' + formatShareValue_(residualShare, 1) + ' restante).');
+    }
+  }
 
   var scoreValue = toNumber_(row && row.score != null ? row.score : 0);
   var baseScore = toNumber_(row && row.baseScore != null ? row.baseScore : 0);
@@ -1773,6 +1890,11 @@ function describeUrlAllocationReason_(row, siteCtx, controls, index, totalCount,
   }
   if (row && row.ucb != null) {
     parts.push('UCB ' + formatScoreValue_(row.ucb, 2) + ' para exploração.');
+  }
+
+  if (row && row.performanceScore != null) {
+    parts.push('Desempenho composto ' + formatShareValue_(row.performanceScore, 1) + ' (score ' + formatShareValue_(row.performanceNormalizedScore || 0, 1) + ', eCPM ef. ' + formatShareValue_(row.performanceNormalizedEcpm || 0, 1) + ', RPS ' + formatShareValue_(row.performanceNormalizedRps || 0, 1) + ').');
+    parts.push('Métricas base: score ' + formatScoreValue_(row.score, 2) + ', eCPM efetivo ' + formatCurrencyValue_(row.ecpmEff, 2) + ', RPS ' + formatCurrencyValue_(row.rps, 2) + '.');
   }
 
   var rankText = 'Prioridade global #' + (index + 1) + ' de ' + totalCount + '.';

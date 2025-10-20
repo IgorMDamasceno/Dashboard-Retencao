@@ -2148,6 +2148,7 @@
           { key: 'urlSeedPercent', label: 'Seed mínimo URL (%)', percent: true, step: 0.5, min: 0, decimals: 1 },
           { key: 'urlSeedSessions', label: 'Seed mínimo URL (sessões)', type: 'number', step: 10, min: 0, decimals: 0 },
           { key: 'urlMinRecipients', label: 'URLs prioritárias', type: 'number', step: 1, min: 0, decimals: 0 },
+          { key: 'urlPriorityShare', label: 'Share URLs prioritárias (%)', percent: true, step: 1, min: 0, decimals: 1 },
           { key: 'urlTargetRecipients', label: 'URLs ativas (limite)', type: 'number', step: 1, min: 0, decimals: 0 },
           { key: 'urlMaxShare', label: 'Teto por URL (%)', percent: true, step: 0.5, min: 0, decimals: 1 },
           { key: 'urlStep', label: 'Passo máximo URL (%)', percent: true, step: 1, min: 0, decimals: 1 },
@@ -2455,6 +2456,18 @@
           active.textContent = 'URLs com tráfego: ' + activeCount;
         }
         infoWrap.appendChild(active);
+        if (summary.priorityCount) {
+          var priorityInfo = document.createElement('span');
+          var priorityTargetShare = summary.priorityShareTarget != null ? summary.priorityShareTarget : 0;
+          var priorityActive = summary.priorityActive != null ? summary.priorityActive : 0;
+          priorityInfo.textContent = 'Prioritárias: ' + priorityActive + ' de ' + summary.priorityCount + ' • alvo ' + formatShare(priorityTargetShare || 0);
+          infoWrap.appendChild(priorityInfo);
+        }
+        if (summary.priorityShareActual != null) {
+          var priorityShare = document.createElement('span');
+          priorityShare.textContent = 'Tráfego prioritário: ' + formatShare(summary.priorityShareActual || 0);
+          infoWrap.appendChild(priorityShare);
+        }
         if (!summary.limitApplied && summary.targetRecipients) {
           var targetInfo = document.createElement('span');
           targetInfo.textContent = 'Meta de URLs: ' + summary.targetRecipients;
@@ -2518,6 +2531,12 @@
             '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-slate-900/70 border border-slate-700/60">Site ' + formatShare(row.suggestedShare || 0) + '</span>' +
             '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-slate-900/70 border border-slate-700/60">Δ ' + formatDeltaShare(row.deltaGlobalShare || 0) + '</span>' +
             '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-slate-900/70 border border-slate-700/60">Cov ' + formatPercent(row.coverage || 0) + '</span>';
+          if (row.performanceScore != null) {
+            meta.innerHTML += '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-200 border border-emerald-400/40">Desempenho ' + formatShare(row.performanceScore || 0) + '</span>';
+          }
+          if (row.priority) {
+            meta.innerHTML += '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-purple-500/15 text-purple-200 border border-purple-400/40">Prioritária</span>';
+          }
           if (row.guaranteed) {
             meta.innerHTML += '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-indigo-500/15 text-indigo-200 border border-indigo-400/40">Garantido</span>';
           }
@@ -2531,6 +2550,18 @@
             meta.innerHTML += '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-slate-900/70 border border-slate-700/60">Próx: ' + escapeHtml(row.nextEval) + '</span>';
           }
           item.appendChild(meta);
+          if (row.performanceScore != null) {
+            var perfBox = document.createElement('div');
+            perfBox.className = 'w-full rounded-lg bg-slate-900/60 border border-slate-700/50 p-3 space-y-1 text-xs leading-snug text-slate-300';
+            var perfTitle = document.createElement('div');
+            perfTitle.className = 'text-slate-100 font-semibold';
+            perfTitle.textContent = 'Desempenho composto ' + formatShare(row.performanceScore || 0);
+            perfBox.appendChild(perfTitle);
+            var perfBreakdown = document.createElement('div');
+            perfBreakdown.textContent = 'Score ' + formatShare(row.performanceNormalizedScore || 0) + ' • eCPM ' + formatShare(row.performanceNormalizedEcpm || 0) + ' • RPS ' + formatShare(row.performanceNormalizedRps || 0);
+            perfBox.appendChild(perfBreakdown);
+            item.appendChild(perfBox);
+          }
           if (row.score != null || row.baseScore != null) {
             var scoreWeight = Math.max(0, Math.min(1, Number(row.weight || 0)));
             var complementWeight = Math.max(0, Math.min(1, 1 - scoreWeight));
@@ -2640,6 +2671,7 @@
           '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionUrls', 'ecpmEff', 'eCPM Efetivo ($)', 'right') + '</th>' +
           '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionUrls', 'momentum', 'Momentum', 'right') + '</th>' +
           '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionUrls', 'score', 'Score', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionUrls', 'performanceScore', 'Desempenho (%)', 'right') + '</th>' +
           '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionUrls', 'currentShare', '% Atual', 'right') + '</th>' +
           '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionUrls', 'suggestedShare', '% Sugerida', 'right') + '</th>' +
           '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionUrls', 'suggestedGlobalShare', '% Global', 'right') + '</th>' +
@@ -2656,9 +2688,10 @@
             '<td class="px-3 py-2 text-right">' + formatNumber(row.sessions) + '</td>' +
             '<td class="px-3 py-2 text-right">' + formatCurrency(row.rps) + '</td>' +
             '<td class="px-3 py-2 text-right">' + formatPercent(row.coverage) + '</td>' +
-            '<td class="px-3 py-2 text-right">' + formatCurrency(row.ecpmEff) + '</td>' +
-            '<td class="px-3 py-2 text-right">' + formatTrend(row.momentum) + '</td>' +
-            '<td class="px-3 py-2 text-right">' + formatCurrency(row.score) + '</td>' +
+          '<td class="px-3 py-2 text-right">' + formatCurrency(row.ecpmEff) + '</td>' +
+          '<td class="px-3 py-2 text-right">' + formatTrend(row.momentum) + '</td>' +
+          '<td class="px-3 py-2 text-right">' + formatCurrency(row.score) + '</td>' +
+          '<td class="px-3 py-2 text-right">' + formatShare(row.performanceScore) + '</td>' +
             '<td class="px-3 py-2 text-right">' + formatShare(row.currentShare) + '</td>' +
             '<td class="px-3 py-2 text-right">' + formatShare(row.suggestedShare) + '</td>' +
             '<td class="px-3 py-2 text-right">' + formatShare(row.suggestedGlobalShare) + '</td>' +
@@ -2745,6 +2778,7 @@
         if (key === 'ecpmEff') return Number(row.ecpmEff || 0);
         if (key === 'momentum') return Number(row.momentum || 0);
         if (key === 'score') return Number(row.score || 0);
+        if (key === 'performanceScore') return Number(row.performanceScore || 0);
         if (key === 'currentShare') return Number(row.currentShare || 0);
         if (key === 'suggestedShare') return Number(row.suggestedShare || 0);
         if (key === 'suggestedGlobalShare') return Number(row.suggestedGlobalShare || 0);
