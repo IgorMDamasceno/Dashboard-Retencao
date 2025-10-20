@@ -1,0 +1,3056 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <title>Dashboard de Retenção</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    body {
+      font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, 'Helvetica Neue', Arial;
+      background-color: #0f172a;
+      background-image: radial-gradient(circle at 1px 1px, #1e293b 1px, transparent 0);
+      background-size: 2rem 2rem;
+    }
+    .card {
+      background: rgba(15, 23, 42, 0.65);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(51, 65, 85, 0.6);
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    }
+    .pill {
+      background: rgba(30, 41, 59, 0.7);
+      border: 1px solid rgba(71, 85, 105, 0.6);
+      transition: all 0.2s ease-in-out;
+    }
+    .pill:hover {
+      background: rgba(51, 65, 85, 0.8);
+      border-color: rgba(100, 116, 139, 0.7);
+    }
+    tbody tr:hover {
+      background-color: rgba(30, 41, 59, 0.45);
+    }
+    #toast-container {
+      position: fixed;
+      top: 1.25rem;
+      right: 1.25rem;
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+    .toast {
+      display: flex;
+      align-items: center;
+      padding: 1rem;
+      border-radius: 0.75rem;
+      color: #e2e8f0;
+      min-width: 280px;
+      max-width: 380px;
+      box-shadow: 0 10px 15px -3px rgba(0,0,0,.35), 0 4px 6px -4px rgba(0,0,0,.25);
+      animation: toast-in 0.4s ease-out both;
+    }
+    .toast-success { background-color: #0f766e; border: 1px solid #0d9488; }
+    .toast-error { background-color: #be123c; border: 1px solid #9f1239; }
+    .toast-info { background-color: #0369a1; border: 1px solid #0ea5e9; }
+    .toast.hide { animation: toast-out 0.4s ease-in forwards; }
+    @keyframes toast-in { from { opacity: 0; transform: translateX(40px); } to { opacity: 1; transform: translateX(0); } }
+    @keyframes toast-out { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(40px); } }
+    .sort-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      color: inherit;
+      width: 100%;
+    }
+    .sort-button .sort-indicator {
+      font-size: 0.65rem;
+      opacity: 0.7;
+    }
+    .metric-group {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      border-top: 1px solid rgba(148, 163, 184, 0.18);
+      border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+    }
+    .metric-group-sessions { background: rgba(56, 189, 248, 0.18); color: #e0f2fe; }
+    .metric-group-revenue { background: rgba(16, 185, 129, 0.18); color: #dcfce7; }
+    .metric-group-rps { background: rgba(249, 115, 22, 0.18); color: #ffedd5; }
+    .metric-sub {
+      font-size: 0.75rem;
+      background: rgba(15, 23, 42, 0.45);
+    }
+    .metric-sub-sessions { background: rgba(56, 189, 248, 0.12); }
+    .metric-sub-revenue { background: rgba(16, 185, 129, 0.12); }
+    .metric-sub-rps { background: rgba(249, 115, 22, 0.12); }
+    .metric-cell-sessions { background: rgba(56, 189, 248, 0.06); }
+    .metric-cell-revenue { background: rgba(16, 185, 129, 0.06); }
+    .metric-cell-rps { background: rgba(249, 115, 22, 0.06); }
+    .metric-divider { border-left: 1px solid rgba(148, 163, 184, 0.22); }
+    .metric-total { background: rgba(15, 23, 42, 0.55); font-weight: 600; }
+    .site-header {
+      background: rgba(15, 23, 42, 0.55);
+      border-right: 1px solid rgba(148, 163, 184, 0.22);
+    }
+    .site-cell {
+      background: rgba(15, 23, 42, 0.35);
+      border-right: 1px solid rgba(148, 163, 184, 0.22);
+    }
+    .scroll-list-10 {
+      max-height: 24rem;
+      overflow-y: auto;
+      overflow-x: auto;
+      overscroll-behavior: contain;
+    }
+    .scroll-list-15 {
+      max-height: 32rem;
+      overflow-y: auto;
+      overflow-x: auto;
+      overscroll-behavior: contain;
+    }
+  </style>
+</head>
+<body class="text-slate-200">
+  <div id="toast-container"></div>
+  <div class="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-8">
+    <header class="card rounded-2xl p-6">
+      <div class="flex flex-wrap items-center justify-between gap-4">
+        <div class="flex items-center gap-4">
+          <div class="bg-slate-900/70 p-3 rounded-xl border border-slate-700/60">
+            <svg class="w-9 h-9 text-sky-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3 5.25C3 4.007 4.007 3 5.25 3h13.5C20.493 3 21.5 4.007 21.5 5.25v13.5A2.25 2.25 0 0119.25 21H5.25A2.25 2.25 0 013 18.75V5.25z" />
+              <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 7.5h9M7.5 12h9m-9 4.5h5.25" />
+            </svg>
+          </div>
+          <div>
+            <h1 class="text-2xl sm:text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-teal-300">Dashboard de Retenção</h1>
+            <p class="text-slate-400 mt-1">Acompanhe a performance por <span class="text-slate-200 font-semibold">Site</span> e <span class="text-slate-200 font-semibold">URL</span>, descartando sempre a última hora de dados.</p>
+          </div>
+        </div>
+        <div class="inline-flex rounded-xl pill p-1">
+          <button id="tab-analise" class="px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold flex items-center gap-2">
+            <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75l2.25 2.25 3.75-4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+            Análise
+          </button>
+          <button id="tab-config" class="px-4 py-2 rounded-lg text-slate-300 hover:text-white flex items-center gap-2">
+            <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v18m9-9H3" /></svg>
+            Configuração
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <section id="view-analise" class="space-y-8">
+      <div class="card rounded-2xl p-6 space-y-6">
+        <div class="flex items-center justify-between flex-wrap gap-3">
+          <h2 class="text-lg font-semibold text-slate-100 flex items-center gap-2">
+            <svg class="w-6 h-6 text-sky-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 5.25h16.5M4.5 9h15M3.75 12.75h16.5M4.5 16.5h15" /></svg>
+            Filtros
+          </h2>
+          <span id="latest-info" class="text-xs text-slate-400"></span>
+        </div>
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
+          <div class="lg:col-span-2">
+            <label class="block text-sm text-slate-400 mb-1">Operação <span class="text-red-400">*</span></label>
+            <select id="filter-operacao" class="w-full pill rounded-lg px-3 py-2 text-sm text-slate-100 bg-slate-900/40">
+              <option value="">— selecione —</option>
+            </select>
+          </div>
+          <div class="lg:col-span-2">
+            <label class="block text-sm text-slate-400 mb-1">Tráfego <span class="text-red-400">*</span></label>
+            <select id="filter-trafego" class="w-full pill rounded-lg px-3 py-2 text-sm text-slate-100 bg-slate-900/40">
+              <option value="">— selecione —</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm text-slate-400 mb-1">Data inicial</label>
+            <input id="filter-inicio" type="date" class="w-full pill rounded-lg px-3 py-2 text-sm bg-slate-900/40 text-slate-100" />
+          </div>
+          <div>
+            <label class="block text-sm text-slate-400 mb-1">Data final</label>
+            <input id="filter-fim" type="date" class="w-full pill rounded-lg px-3 py-2 text-sm bg-slate-900/40 text-slate-100" />
+          </div>
+          <div class="lg:col-span-2">
+            <label class="block text-sm text-slate-400 mb-1">Janela de RPS por URL</label>
+            <select id="filter-janela" class="w-full pill rounded-lg px-3 py-2 text-sm text-slate-100 bg-slate-900/40">
+              <option value="day">Dia inteiro (exceto última hora)</option>
+              <option value="last6h">Últimas 6 horas</option>
+              <option value="last3h">Últimas 3 horas</option>
+            </select>
+          </div>
+        </div>
+        <div class="flex flex-wrap items-center gap-3 justify-between">
+          <p class="text-xs text-slate-400">Os filtros de operação e tráfego são obrigatórios. Caso o período não seja informado, será utilizado o dia mais recente disponível.</p>
+          <button id="btn-aplicar" class="inline-flex items-center gap-2 bg-sky-600 hover:bg-sky-500 text-white font-semibold px-5 py-2.5 rounded-xl shadow-lg shadow-sky-900/40 transition-all">
+            <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M4 2a2 2 0 00-2 2v2.5A1.5 1.5 0 003.5 8h13A1.5 1.5 0 0018 6.5V4a2 2 0 00-2-2H4z" /><path fill-rule="evenodd" d="M18 9.5a.5.5 0 00-.5-.5h-15a.5.5 0 00-.5.5v4A2.5 2.5 0 004.5 16h11a2.5 2.5 0 002.5-2.5v-4z" clip-rule="evenodd" /></svg>
+            Aplicar filtros
+          </button>
+        </div>
+      </div>
+
+      <div id="analysis-wrapper" class="space-y-8"></div>
+    </section>
+
+    <section id="view-config" class="hidden space-y-6">
+      <div class="card rounded-2xl p-6 space-y-5">
+        <div class="flex items-center justify-between gap-3">
+          <h2 class="text-lg font-semibold text-slate-100">Mapear URLs por Operação</h2>
+          <button id="btn-reset-operacao" class="text-xs text-slate-400 hover:text-slate-200">Limpar formulário</button>
+        </div>
+        <form id="form-operacao" class="grid md:grid-cols-4 gap-4">
+          <input type="hidden" id="operacao-id" />
+          <div class="md:col-span-2">
+            <label class="block text-sm text-slate-400 mb-1">Operação</label>
+            <input id="operacao-nome" class="w-full pill rounded-lg px-3 py-2 bg-slate-900/40 text-slate-100" placeholder="Ex: Retenção US" />
+          </div>
+          <div class="md:col-span-2">
+            <label class="block text-sm text-slate-400 mb-1">URL</label>
+            <input id="operacao-url" class="w-full pill rounded-lg px-3 py-2 bg-slate-900/40 text-slate-100" placeholder="Ex: exemplo.com/oferta" />
+          </div>
+          <div class="md:col-span-4">
+            <label class="block text-sm text-slate-400 mb-1">Observação (opcional)</label>
+            <input id="operacao-nota" class="w-full pill rounded-lg px-3 py-2 bg-slate-900/40 text-slate-100" placeholder="Notas internas" />
+          </div>
+          <div class="md:col-span-4 flex gap-3">
+            <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white font-semibold px-4 py-2 rounded-xl">Salvar</button>
+            <button type="button" id="btn-operacao-cancel" class="pill px-4 py-2 rounded-xl">Cancelar</button>
+          </div>
+        </form>
+        <div class="flex items-center justify-between gap-3 flex-wrap">
+          <label for="operacao-busca" class="text-xs uppercase tracking-wide text-slate-400">Filtrar</label>
+          <input id="operacao-busca" type="search" class="pill px-3 py-2 rounded-lg bg-slate-900/40 text-sm text-slate-100 w-full md:w-72" placeholder="Buscar por operação, URL ou observação" />
+        </div>
+        <div class="overflow-auto scroll-list-10">
+          <table class="w-full text-sm min-w-full">
+            <thead class="text-slate-400 text-left">
+              <tr>
+                <th class="py-2 px-2 font-semibold">Operação</th>
+                <th class="py-2 px-2 font-semibold">URL</th>
+                <th class="py-2 px-2 font-semibold">Observação</th>
+                <th class="py-2 px-2 font-semibold w-32">Ações</th>
+              </tr>
+            </thead>
+            <tbody id="operacoes-lista" class="divide-y divide-slate-800/60"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card rounded-2xl p-6 space-y-5">
+        <div class="flex items-center justify-between gap-3 flex-wrap">
+          <h2 class="text-lg font-semibold text-slate-100">Integração de Operações com API</h2>
+          <button id="btn-reset-operacao-integracao" class="text-xs text-slate-400 hover:text-slate-200">Limpar formulário</button>
+        </div>
+        <form id="form-operacao-integracao" class="grid md:grid-cols-5 gap-4">
+          <input type="hidden" id="operacao-integracao-id" />
+          <div class="md:col-span-2">
+            <label class="block text-sm text-slate-400 mb-1">Operação</label>
+            <select id="operacao-integracao-operacao" class="w-full pill rounded-lg px-3 py-2 bg-slate-900/40 text-slate-100">
+              <option value="">— selecione —</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm text-slate-400 mb-1">Empresa ID</label>
+            <input id="operacao-integracao-empresa" class="w-full pill rounded-lg px-3 py-2 bg-slate-900/40 text-slate-100" placeholder="Ex: 123" />
+          </div>
+          <div>
+            <label class="block text-sm text-slate-400 mb-1">Domínio ID</label>
+            <input id="operacao-integracao-dominio" class="w-full pill rounded-lg px-3 py-2 bg-slate-900/40 text-slate-100" placeholder="Ex: 456" />
+          </div>
+          <div class="md:col-span-2">
+            <label class="block text-sm text-slate-400 mb-1">Slug da rota</label>
+            <input id="operacao-integracao-slug" class="w-full pill rounded-lg px-3 py-2 bg-slate-900/40 text-slate-100" placeholder="Ex: ofertas-retencao" />
+          </div>
+          <div class="flex items-center gap-2 md:col-span-3">
+            <input id="operacao-integracao-ativo" type="checkbox" class="w-4 h-4 rounded border-slate-600 bg-slate-900/60" />
+            <label for="operacao-integracao-ativo" class="text-sm text-slate-300">Ativar automação (atualiza porcentagens a cada 4h)</label>
+          </div>
+          <div class="md:col-span-5 flex gap-3">
+            <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white font-semibold px-4 py-2 rounded-xl">Salvar</button>
+            <button type="button" id="btn-operacao-integracao-cancel" class="pill px-4 py-2 rounded-xl">Cancelar</button>
+          </div>
+        </form>
+        <div class="flex items-center justify-between gap-3 flex-wrap">
+          <label for="operacao-integracao-busca" class="text-xs uppercase tracking-wide text-slate-400">Filtrar</label>
+          <input id="operacao-integracao-busca" type="search" class="pill px-3 py-2 rounded-lg bg-slate-900/40 text-sm text-slate-100 w-full md:w-80" placeholder="Buscar por operação, IDs ou slug" />
+        </div>
+        <div class="overflow-auto scroll-list-10">
+          <table class="w-full text-sm min-w-full">
+            <thead class="text-slate-400 text-left">
+              <tr>
+                <th class="py-2 px-2 font-semibold">Operação</th>
+                <th class="py-2 px-2 font-semibold">Empresa ID</th>
+                <th class="py-2 px-2 font-semibold">Domínio ID</th>
+                <th class="py-2 px-2 font-semibold">Slug rota</th>
+                <th class="py-2 px-2 font-semibold">Status</th>
+                <th class="py-2 px-2 font-semibold w-32">Ações</th>
+              </tr>
+            </thead>
+            <tbody id="operacao-integracao-lista" class="divide-y divide-slate-800/60"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card rounded-2xl p-6 space-y-5">
+        <h2 class="text-lg font-semibold text-slate-100">Configurar Tráfego e utm_source</h2>
+        <form id="form-trafego" class="grid md:grid-cols-3 gap-4">
+          <input type="hidden" id="trafego-id" />
+          <div>
+            <label class="block text-sm text-slate-400 mb-1">Tipo de tráfego</label>
+            <select id="trafego-tipo" class="w-full pill rounded-lg px-3 py-2 bg-slate-900/40 text-slate-100"></select>
+          </div>
+          <div class="md:col-span-2">
+            <label class="block text-sm text-slate-400 mb-1">utm_source</label>
+            <input id="trafego-source" class="w-full pill rounded-lg px-3 py-2 bg-slate-900/40 text-slate-100" placeholder="Ex: push-main" />
+          </div>
+          <div class="md:col-span-3 flex gap-3">
+            <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white font-semibold px-4 py-2 rounded-xl">Salvar</button>
+            <button type="button" id="btn-trafego-cancel" class="pill px-4 py-2 rounded-xl">Cancelar</button>
+          </div>
+        </form>
+        <div class="flex items-center justify-between gap-3 flex-wrap">
+          <label for="trafego-busca" class="text-xs uppercase tracking-wide text-slate-400">Filtrar</label>
+          <input id="trafego-busca" type="search" class="pill px-3 py-2 rounded-lg bg-slate-900/40 text-sm text-slate-100 w-full md:w-64" placeholder="Buscar por tipo ou utm_source" />
+        </div>
+        <div class="overflow-auto scroll-list-10">
+          <table class="w-full text-sm min-w-full">
+            <thead class="text-slate-400 text-left">
+              <tr>
+                <th class="py-2 px-2 font-semibold">Tipo</th>
+                <th class="py-2 px-2 font-semibold">utm_source</th>
+                <th class="py-2 px-2 font-semibold w-28">Ações</th>
+              </tr>
+            </thead>
+            <tbody id="trafego-lista" class="divide-y divide-slate-800/60"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card rounded-2xl p-6 space-y-4">
+        <div class="flex items-center justify-between gap-3">
+          <h2 class="text-lg font-semibold text-slate-100">RevShare por Site</h2>
+          <span class="text-xs text-slate-400">Valores entre 0% e 100%. Aplicados em todas as métricas de receita.</span>
+        </div>
+        <div class="flex items-center justify-between gap-3 flex-wrap">
+          <label for="revshare-busca" class="text-xs uppercase tracking-wide text-slate-400">Filtrar</label>
+          <input id="revshare-busca" type="search" class="pill px-3 py-2 rounded-lg bg-slate-900/40 text-sm text-slate-100 w-full md:w-64" placeholder="Buscar por site" />
+        </div>
+        <div class="overflow-auto scroll-list-10">
+          <table class="w-full text-sm min-w-full">
+            <thead class="text-slate-400 text-left">
+              <tr>
+                <th class="py-2 px-2 font-semibold">Site</th>
+                <th class="py-2 px-2 font-semibold">RevShare (%)</th>
+                <th class="py-2 px-2 font-semibold w-28">Ações</th>
+              </tr>
+            </thead>
+            <tbody id="revshare-lista" class="divide-y divide-slate-800/60"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div id="loading-overlay" class="hidden fixed inset-0 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center z-50">
+    <div class="flex flex-col items-center gap-3 text-slate-200">
+      <svg class="w-10 h-10 animate-spin text-sky-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+      </svg>
+      <span class="text-sm">Carregando...</span>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var DETAILED_METRICS = [
+        { key: 'sessions', label: 'Sessões', type: 'number' },
+        { key: 'revenue', label: 'Receita ($)', type: 'currency' },
+        { key: 'rps', label: 'RPS ($)', type: 'currency' },
+        { key: 'coverage', label: 'Cobertura (%)', type: 'percent' },
+        { key: 'ecpm', label: 'eCPM ($)', type: 'currency' },
+        { key: 'effectiveEcpm', label: 'eCPM Efetivo ($)', type: 'currency' }
+      ];
+      var DETAILED_COLORS = ['#38bdf8', '#34d399', '#f97316', '#a855f7', '#f43f5e', '#facc15', '#22d3ee', '#fb7185', '#4ade80', '#60a5fa'];
+      if (window.Chart && window.ChartDataLabels) {
+        Chart.register(window.ChartDataLabels);
+      }
+      var state = {
+        config: {
+          operations: [],
+          operationIntegrations: [],
+          traffics: [],
+          revshare: [],
+          trafficTypes: []
+        },
+        groupedOperations: [],
+        operationIntegrationOptions: [],
+        operationIntegrationMap: {},
+        trafficByType: {},
+        filters: {
+          operation: '',
+          traffic: '',
+          startDate: '',
+          endDate: '',
+          window: 'day'
+        },
+        sort: {
+          site: { key: 'totalRevenue', direction: 'desc' },
+          url: { key: 'revenue', direction: 'desc' },
+          distributionSites: { key: 'suggestedShare', direction: 'desc' },
+          distributionUrls: { key: 'suggestedShare', direction: 'desc' }
+        },
+        search: {
+          operations: '',
+          operationIntegrations: '',
+          traffics: '',
+          revshare: '',
+          url: ''
+        },
+        analysisTab: 'overview',
+        distribution: {
+          params: null,
+          selectedSite: '',
+          urlSearch: '',
+          dirty: false
+        },
+        detailed: {
+          mode: 'url',
+          selected: [],
+          metrics: ['revenue'],
+          search: '',
+          allowEmpty: false
+        },
+        detailedChart: null,
+        detailedMetricMenuCleanup: null,
+        analysis: null
+      };
+
+      document.addEventListener('DOMContentLoaded', function () {
+        bindTabs();
+        bindFilters();
+        bindForms();
+        bindSearchInputs();
+        loadConfig();
+      });
+
+      function bindTabs() {
+        var tabAnalise = document.getElementById('tab-analise');
+        var tabConfig = document.getElementById('tab-config');
+        var viewAnalise = document.getElementById('view-analise');
+        var viewConfig = document.getElementById('view-config');
+        tabAnalise.addEventListener('click', function () {
+          tabAnalise.classList.add('bg-blue-600', 'text-white');
+          tabConfig.classList.remove('bg-blue-600', 'text-white');
+          tabConfig.classList.add('text-slate-300');
+          viewAnalise.classList.remove('hidden');
+          viewConfig.classList.add('hidden');
+        });
+        tabConfig.addEventListener('click', function () {
+          tabConfig.classList.add('bg-blue-600', 'text-white');
+          tabAnalise.classList.remove('bg-blue-600', 'text-white');
+          tabAnalise.classList.add('text-slate-300');
+          viewConfig.classList.remove('hidden');
+          viewAnalise.classList.add('hidden');
+        });
+      }
+
+      function bindFilters() {
+        document.getElementById('filter-janela').addEventListener('change', function (ev) {
+          state.filters.window = ev.target.value;
+        });
+        document.getElementById('btn-aplicar').addEventListener('click', aplicarFiltros);
+      }
+
+      function bindForms() {
+        document.getElementById('btn-reset-operacao').addEventListener('click', resetOperacaoForm);
+        document.getElementById('btn-operacao-cancel').addEventListener('click', resetOperacaoForm);
+        document.getElementById('form-operacao').addEventListener('submit', function (ev) {
+          ev.preventDefault();
+          salvarOperacao();
+        });
+        var integrationReset = document.getElementById('btn-reset-operacao-integracao');
+        if (integrationReset) {
+          integrationReset.addEventListener('click', resetOperacaoIntegracaoForm);
+        }
+        var integrationCancel = document.getElementById('btn-operacao-integracao-cancel');
+        if (integrationCancel) {
+          integrationCancel.addEventListener('click', resetOperacaoIntegracaoForm);
+        }
+        var integrationForm = document.getElementById('form-operacao-integracao');
+        if (integrationForm) {
+          integrationForm.addEventListener('submit', function (ev) {
+            ev.preventDefault();
+            salvarOperacaoIntegracao();
+          });
+        }
+        document.getElementById('form-trafego').addEventListener('submit', function (ev) {
+          ev.preventDefault();
+          salvarTrafego();
+        });
+        document.getElementById('btn-trafego-cancel').addEventListener('click', resetTrafegoForm);
+      }
+
+      function bindSearchInputs() {
+        var opSearch = document.getElementById('operacao-busca');
+        if (opSearch) {
+          opSearch.value = state.search.operations || '';
+          opSearch.addEventListener('input', function (ev) {
+            state.search.operations = ev.target.value;
+            renderOperacoesTabela();
+          });
+        }
+        var opIntegrationSearch = document.getElementById('operacao-integracao-busca');
+        if (opIntegrationSearch) {
+          opIntegrationSearch.value = state.search.operationIntegrations || '';
+          opIntegrationSearch.addEventListener('input', function (ev) {
+            state.search.operationIntegrations = ev.target.value;
+            renderOperacaoIntegracaoTabela();
+          });
+        }
+        var trafegoSearch = document.getElementById('trafego-busca');
+        if (trafegoSearch) {
+          trafegoSearch.value = state.search.traffics || '';
+          trafegoSearch.addEventListener('input', function (ev) {
+            state.search.traffics = ev.target.value;
+            renderTrafegoTabela();
+          });
+        }
+        var revshareSearch = document.getElementById('revshare-busca');
+        if (revshareSearch) {
+          revshareSearch.value = state.search.revshare || '';
+          revshareSearch.addEventListener('input', function (ev) {
+            state.search.revshare = ev.target.value;
+            renderRevshareTabela();
+          });
+        }
+      }
+
+      function loadConfig() {
+        showLoading(true);
+        google.script.run
+          .withSuccessHandler(function (data) {
+            showLoading(false);
+            state.config = data || state.config;
+            prepareConfig();
+            renderConfig();
+            renderFilters();
+          })
+          .withFailureHandler(handleError)
+          .getConfigData();
+      }
+
+      function prepareConfig() {
+        var grouped = {};
+        (state.config.operations || []).forEach(function (item) {
+          if (!item || !item.operation) return;
+          var key = item.operation;
+          if (!grouped[key]) {
+            grouped[key] = { name: key, urls: [], items: [] };
+          }
+          grouped[key].items.push(item);
+          if (item.url) grouped[key].urls.push(item.url);
+        });
+        state.groupedOperations = Object.keys(grouped).map(function (key) { return grouped[key]; }).sort(function (a, b) {
+          return a.name.localeCompare(b.name, 'pt-BR');
+        });
+        var integrationOptions = {};
+        state.groupedOperations.forEach(function (group) {
+          integrationOptions[group.name] = true;
+        });
+        state.operationIntegrationMap = {};
+        (state.config.operationIntegrations || []).forEach(function (item) {
+          if (!item || !item.operation) return;
+          integrationOptions[item.operation] = true;
+          state.operationIntegrationMap[item.operation] = item;
+        });
+        state.operationIntegrationOptions = Object.keys(integrationOptions).sort(function (a, b) {
+          return a.localeCompare(b, 'pt-BR');
+        });
+        var trafficByType = {};
+        (state.config.traffics || []).forEach(function (item) {
+          if (!item || !item.type) return;
+          if (!trafficByType[item.type]) trafficByType[item.type] = [];
+          trafficByType[item.type].push(item.source);
+        });
+        state.trafficByType = trafficByType;
+      }
+
+      function renderFilters() {
+        var selectOp = document.getElementById('filter-operacao');
+        var current = selectOp.value;
+        selectOp.innerHTML = '<option value="">— selecione —</option>';
+        state.groupedOperations.forEach(function (group) {
+          var opt = document.createElement('option');
+          opt.value = group.name;
+          opt.textContent = group.name + ' (' + group.urls.length + ' URL' + (group.urls.length === 1 ? '' : 's') + ')';
+          selectOp.appendChild(opt);
+        });
+        if (current) selectOp.value = current;
+        selectOp.onchange = function (ev) {
+          state.filters.operation = ev.target.value;
+        };
+
+        var selectTr = document.getElementById('filter-trafego');
+        var currentTraffic = selectTr.value;
+        selectTr.innerHTML = '<option value="">— selecione —</option>';
+        (state.config.trafficTypes || []).forEach(function (type) {
+          var opt = document.createElement('option');
+          opt.value = type;
+          var count = (state.trafficByType[type] || []).length;
+          opt.textContent = type + (count ? ' · ' + count + ' fonte(s)' : '');
+          selectTr.appendChild(opt);
+        });
+        if (currentTraffic) selectTr.value = currentTraffic;
+        selectTr.onchange = function (ev) {
+          state.filters.traffic = ev.target.value;
+        };
+      }
+
+      function renderConfig() {
+        renderOperacoesTabela();
+        renderOperacaoIntegracaoTabela();
+        renderTrafegoTabela();
+        renderRevshareTabela();
+        renderTrafegoSelect();
+      }
+
+      function renderOperacoesTabela() {
+        var tbody = document.getElementById('operacoes-lista');
+        if (!tbody) return;
+        tbody.innerHTML = '';
+        var searchValue = (state.search.operations || '').trim().toLowerCase();
+        var input = document.getElementById('operacao-busca');
+        if (input && input.value !== state.search.operations) {
+          input.value = state.search.operations || '';
+        }
+        var items = (state.config.operations || []).slice();
+        if (!items.length) {
+          tbody.innerHTML = '<tr><td colspan="4" class="px-2 py-3 text-center text-slate-400">Nenhuma operação cadastrada.</td></tr>';
+          return;
+        }
+        if (searchValue) {
+          items = items.filter(function (item) {
+            return ['operation', 'url', 'note'].some(function (key) {
+              return String(item[key] || '').toLowerCase().indexOf(searchValue) !== -1;
+            });
+          });
+        }
+        if (!items.length) {
+          tbody.innerHTML = '<tr><td colspan="4" class="px-2 py-3 text-center text-slate-400">Nenhum resultado para o filtro informado.</td></tr>';
+          return;
+        }
+        items.sort(function (a, b) {
+          return a.operation.localeCompare(b.operation, 'pt-BR') || (a.url || '').localeCompare(b.url || '', 'pt-BR');
+        }).forEach(function (item) {
+          var tr = document.createElement('tr');
+          tr.innerHTML = [
+            '<td class="px-2 py-2 align-top">' + escapeHtml(item.operation || '') + '</td>',
+            '<td class="px-2 py-2 align-top text-sky-300 break-all">' + escapeHtml(item.url || '') + '</td>',
+            '<td class="px-2 py-2 align-top text-slate-400">' + escapeHtml(item.note || '') + '</td>',
+            '<td class="px-2 py-2 align-top"><div class="flex gap-2">' +
+              '<button class="px-2 py-1 pill rounded-lg text-xs" data-action="edit" data-id="' + item.id + '">Editar</button>' +
+              '<button class="px-2 py-1 bg-rose-600 hover:bg-rose-500 rounded-lg text-xs text-white" data-action="delete" data-id="' + item.id + '">Remover</button>' +
+            '</div></td>'
+          ].join('');
+          tbody.appendChild(tr);
+        });
+        tbody.querySelectorAll('button[data-action="edit"]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var id = btn.getAttribute('data-id');
+            var found = (state.config.operations || []).find(function (item) { return item.id === id; });
+            if (!found) return;
+            document.getElementById('operacao-id').value = found.id || '';
+            document.getElementById('operacao-nome').value = found.operation || '';
+            document.getElementById('operacao-url').value = found.url || '';
+            document.getElementById('operacao-nota').value = found.note || '';
+          });
+        });
+        tbody.querySelectorAll('button[data-action="delete"]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var id = btn.getAttribute('data-id');
+            if (!id) return;
+            if (!confirm('Remover este mapeamento?')) return;
+            showLoading(true);
+            google.script.run
+              .withSuccessHandler(function (data) {
+                showLoading(false);
+                showToast('Mapeamento removido.', 'success');
+                state.config = data;
+                prepareConfig();
+                renderConfig();
+                renderFilters();
+              })
+              .withFailureHandler(handleError)
+              .deleteOperationConfig(id);
+          });
+        });
+      }
+
+      function renderOperacaoIntegracaoTabela() {
+        var tbody = document.getElementById('operacao-integracao-lista');
+        if (!tbody) return;
+        var select = document.getElementById('operacao-integracao-operacao');
+        if (select) {
+          var currentValue = select.value;
+          select.innerHTML = '';
+          var placeholder = document.createElement('option');
+          placeholder.value = '';
+          placeholder.textContent = '— selecione —';
+          select.appendChild(placeholder);
+          state.operationIntegrationOptions.forEach(function (name) {
+            var opt = document.createElement('option');
+            opt.value = name;
+            opt.textContent = name;
+            select.appendChild(opt);
+          });
+          if (currentValue && state.operationIntegrationOptions.indexOf(currentValue) !== -1) {
+            select.value = currentValue;
+          } else {
+            select.value = '';
+          }
+        }
+        tbody.innerHTML = '';
+        var searchValue = (state.search.operationIntegrations || '').trim().toLowerCase();
+        var input = document.getElementById('operacao-integracao-busca');
+        if (input && input.value !== state.search.operationIntegrations) {
+          input.value = state.search.operationIntegrations || '';
+        }
+        var items = (state.config.operationIntegrations || []).slice();
+        if (!items.length) {
+          tbody.innerHTML = '<tr><td colspan="6" class="px-2 py-3 text-center text-slate-400">Nenhuma operação integrada.</td></tr>';
+          return;
+        }
+        if (searchValue) {
+          items = items.filter(function (item) {
+            return ['operation', 'companyId', 'domainId', 'routeSlug'].some(function (key) {
+              return String(item[key] || '').toLowerCase().indexOf(searchValue) !== -1;
+            }) || (item.active ? 'ativo' : 'inativo').indexOf(searchValue) !== -1;
+          });
+        }
+        if (!items.length) {
+          tbody.innerHTML = '<tr><td colspan="6" class="px-2 py-3 text-center text-slate-400">Nenhum resultado para o filtro informado.</td></tr>';
+          return;
+        }
+        items.sort(function (a, b) {
+          return (a.operation || '').localeCompare(b.operation || '', 'pt-BR');
+        }).forEach(function (item) {
+          var statusClass = item.active ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-700/40 text-slate-300';
+          var statusLabel = item.active ? 'Ativo' : 'Inativo';
+          var tr = document.createElement('tr');
+          tr.innerHTML = [
+            '<td class="px-2 py-2 align-top">' + escapeHtml(item.operation || '') + '</td>',
+            '<td class="px-2 py-2 align-top text-slate-300">' + escapeHtml(item.companyId || '') + '</td>',
+            '<td class="px-2 py-2 align-top text-slate-300">' + escapeHtml(item.domainId || '') + '</td>',
+            '<td class="px-2 py-2 align-top text-sky-300 break-all">' + escapeHtml(item.routeSlug || '') + '</td>',
+            '<td class="px-2 py-2 align-top"><span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ' + statusClass + '">' + statusLabel + '</span></td>',
+            '<td class="px-2 py-2 align-top"><div class="flex gap-2">' +
+              '<button class="px-2 py-1 pill rounded-lg text-xs" data-action="edit" data-id="' + escapeHtml(item.id || '') + '">Editar</button>' +
+              '<button class="px-2 py-1 bg-rose-600 hover:bg-rose-500 rounded-lg text-xs text-white" data-action="delete" data-id="' + escapeHtml(item.id || '') + '">Remover</button>' +
+            '</div></td>'
+          ].join('');
+          tbody.appendChild(tr);
+        });
+        tbody.querySelectorAll('button[data-action="edit"]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var id = btn.getAttribute('data-id');
+            var found = (state.config.operationIntegrations || []).find(function (item) { return item.id === id; });
+            if (!found) return;
+            document.getElementById('operacao-integracao-id').value = found.id || '';
+            document.getElementById('operacao-integracao-operacao').value = found.operation || '';
+            document.getElementById('operacao-integracao-empresa').value = found.companyId || '';
+            document.getElementById('operacao-integracao-dominio').value = found.domainId || '';
+            document.getElementById('operacao-integracao-slug').value = found.routeSlug || '';
+            document.getElementById('operacao-integracao-ativo').checked = !!found.active;
+          });
+        });
+        tbody.querySelectorAll('button[data-action="delete"]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var id = btn.getAttribute('data-id');
+            if (!id) return;
+            if (!confirm('Remover esta integração?')) return;
+            showLoading(true);
+            google.script.run
+              .withSuccessHandler(function (data) {
+                showLoading(false);
+                showToast('Integração removida.', 'success');
+                resetOperacaoIntegracaoForm();
+                state.config = data;
+                prepareConfig();
+                renderConfig();
+                renderFilters();
+              })
+              .withFailureHandler(handleError)
+              .deleteOperationIntegrationConfig(id);
+          });
+        });
+      }
+
+      function renderTrafegoSelect() {
+        var select = document.getElementById('trafego-tipo');
+        var current = select.value;
+        select.innerHTML = '';
+        (state.config.trafficTypes || []).forEach(function (type) {
+          var opt = document.createElement('option');
+          opt.value = type;
+          opt.textContent = type;
+          select.appendChild(opt);
+        });
+        if (current) select.value = current;
+      }
+
+      function renderTrafegoTabela() {
+        var tbody = document.getElementById('trafego-lista');
+        if (!tbody) return;
+        tbody.innerHTML = '';
+        var searchValue = (state.search.traffics || '').trim().toLowerCase();
+        var input = document.getElementById('trafego-busca');
+        if (input && input.value !== state.search.traffics) {
+          input.value = state.search.traffics || '';
+        }
+        var items = (state.config.traffics || []).slice();
+        if (!items.length) {
+          tbody.innerHTML = '<tr><td colspan="3" class="px-2 py-3 text-center text-slate-400">Nenhuma fonte cadastrada.</td></tr>';
+          return;
+        }
+        if (searchValue) {
+          items = items.filter(function (item) {
+            return ['type', 'source'].some(function (key) {
+              return String(item[key] || '').toLowerCase().indexOf(searchValue) !== -1;
+            });
+          });
+        }
+        if (!items.length) {
+          tbody.innerHTML = '<tr><td colspan="3" class="px-2 py-3 text-center text-slate-400">Nenhum resultado para o filtro informado.</td></tr>';
+          return;
+        }
+        items.sort(function (a, b) {
+          return a.type.localeCompare(b.type, 'pt-BR') || (a.source || '').localeCompare(b.source || '', 'pt-BR');
+        }).forEach(function (item) {
+          var tr = document.createElement('tr');
+          tr.innerHTML = [
+            '<td class="px-2 py-2">' + escapeHtml(item.type || '') + '</td>',
+            '<td class="px-2 py-2 text-sky-300 break-all">' + escapeHtml(item.source || '') + '</td>',
+            '<td class="px-2 py-2"><div class="flex gap-2">' +
+              '<button class="px-2 py-1 pill rounded-lg text-xs" data-action="edit" data-id="' + item.id + '">Editar</button>' +
+              '<button class="px-2 py-1 bg-rose-600 hover:bg-rose-500 rounded-lg text-xs text-white" data-action="delete" data-id="' + item.id + '">Remover</button>' +
+            '</div></td>'
+          ].join('');
+          tbody.appendChild(tr);
+        });
+        tbody.querySelectorAll('button[data-action="edit"]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var id = btn.getAttribute('data-id');
+            var found = (state.config.traffics || []).find(function (item) { return item.id === id; });
+            if (!found) return;
+            document.getElementById('trafego-id').value = found.id || '';
+            document.getElementById('trafego-tipo').value = found.type || '';
+            document.getElementById('trafego-source').value = found.source || '';
+          });
+        });
+        tbody.querySelectorAll('button[data-action="delete"]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var id = btn.getAttribute('data-id');
+            if (!id) return;
+            if (!confirm('Remover esta utm_source?')) return;
+            showLoading(true);
+            google.script.run
+              .withSuccessHandler(function (data) {
+                showLoading(false);
+                showToast('utm_source removida.', 'success');
+                state.config = data;
+                prepareConfig();
+                renderConfig();
+                renderFilters();
+              })
+              .withFailureHandler(handleError)
+              .deleteTrafficConfig(id);
+          });
+        });
+      }
+
+      function renderRevshareTabela() {
+        var tbody = document.getElementById('revshare-lista');
+        if (!tbody) return;
+        tbody.innerHTML = '';
+        var searchValue = (state.search.revshare || '').trim().toLowerCase();
+        var input = document.getElementById('revshare-busca');
+        if (input && input.value !== state.search.revshare) {
+          input.value = state.search.revshare || '';
+        }
+        var items = (state.config.revshare || []).slice();
+        if (!items.length) {
+          tbody.innerHTML = '<tr><td colspan="3" class="px-2 py-3 text-center text-slate-400">Nenhum site identificado a partir das URLs cadastradas.</td></tr>';
+          return;
+        }
+        if (searchValue) {
+          items = items.filter(function (item) {
+            return ['site', 'revshare'].some(function (key) {
+              return String(item[key] || '').toLowerCase().indexOf(searchValue) !== -1;
+            });
+          });
+        }
+        if (!items.length) {
+          tbody.innerHTML = '<tr><td colspan="3" class="px-2 py-3 text-center text-slate-400">Nenhum resultado para o filtro informado.</td></tr>';
+          return;
+        }
+        items.sort(function (a, b) {
+          return (a.site || '').localeCompare(b.site || '', 'pt-BR');
+        }).forEach(function (item) {
+          var tr = document.createElement('tr');
+          tr.innerHTML = [
+            '<td class="px-2 py-2">' + escapeHtml(item.site || '') + '</td>',
+            '<td class="px-2 py-2"><input type="number" min="0" max="100" step="0.01" class="w-32 pill rounded-lg px-2 py-1 bg-slate-900/40 text-slate-100" value="' + formatInputNumber(item.revshare) + '" data-site="' + escapeHtml(item.site || '') + '" /></td>',
+            '<td class="px-2 py-2"><button class="px-3 py-1 bg-teal-600 hover:bg-teal-500 text-white rounded-lg text-xs" data-site="' + escapeHtml(item.site || '') + '">Salvar</button></td>'
+          ].join('');
+          tbody.appendChild(tr);
+        });
+        tbody.querySelectorAll('button').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var site = btn.getAttribute('data-site');
+            var row = btn.closest('tr');
+            var input = row ? row.querySelector('input[type="number"]') : null;
+            if (!input) return;
+            var value = input.value;
+            if (value !== '' && (Number(value) < 0 || Number(value) > 100)) {
+              showToast('Informe um RevShare entre 0 e 100.', 'error');
+              return;
+            }
+            showLoading(true);
+            google.script.run
+              .withSuccessHandler(function (data) {
+                showLoading(false);
+                showToast('RevShare atualizado.', 'success');
+                state.config = data;
+                prepareConfig();
+                renderConfig();
+                renderFilters();
+              })
+              .withFailureHandler(handleError)
+              .updateRevShare({ site: site, revshare: value });
+          });
+        });
+      }
+
+      function salvarOperacao() {
+        var payload = {
+          id: document.getElementById('operacao-id').value,
+          operation: document.getElementById('operacao-nome').value,
+          url: document.getElementById('operacao-url').value,
+          note: document.getElementById('operacao-nota').value
+        };
+        if (!payload.operation) {
+          showToast('Informe o nome da operação.', 'error');
+          return;
+        }
+        if (!payload.url) {
+          showToast('Informe a URL.', 'error');
+          return;
+        }
+        showLoading(true);
+        google.script.run
+          .withSuccessHandler(function (data) {
+            showLoading(false);
+            showToast('Mapeamento salvo com sucesso.', 'success');
+            resetOperacaoForm();
+            state.config = data;
+            prepareConfig();
+            renderConfig();
+            renderFilters();
+          })
+          .withFailureHandler(handleError)
+          .saveOperationConfig(payload);
+      }
+
+      function salvarOperacaoIntegracao() {
+        var payload = {
+          id: document.getElementById('operacao-integracao-id').value,
+          operation: document.getElementById('operacao-integracao-operacao').value,
+          companyId: document.getElementById('operacao-integracao-empresa').value,
+          domainId: document.getElementById('operacao-integracao-dominio').value,
+          routeSlug: document.getElementById('operacao-integracao-slug').value,
+          active: document.getElementById('operacao-integracao-ativo').checked
+        };
+        if (!payload.operation) {
+          showToast('Selecione a operação.', 'error');
+          return;
+        }
+        if (payload.active && (!payload.companyId || !payload.domainId || !payload.routeSlug)) {
+          showToast('Informe Empresa ID, Domínio ID e Slug da rota para ativar.', 'error');
+          return;
+        }
+        showLoading(true);
+        google.script.run
+          .withSuccessHandler(function (data) {
+            showLoading(false);
+            showToast('Integração salva.', 'success');
+            resetOperacaoIntegracaoForm();
+            state.config = data;
+            prepareConfig();
+            renderConfig();
+            renderFilters();
+          })
+          .withFailureHandler(handleError)
+          .saveOperationIntegrationConfig(payload);
+      }
+
+      function salvarTrafego() {
+        var payload = {
+          id: document.getElementById('trafego-id').value,
+          type: document.getElementById('trafego-tipo').value,
+          source: document.getElementById('trafego-source').value
+        };
+        if (!payload.type) {
+          showToast('Selecione o tipo de tráfego.', 'error');
+          return;
+        }
+        if (!payload.source) {
+          showToast('Informe a utm_source.', 'error');
+          return;
+        }
+        showLoading(true);
+        google.script.run
+          .withSuccessHandler(function (data) {
+            showLoading(false);
+            showToast('utm_source salva.', 'success');
+            resetTrafegoForm();
+            state.config = data;
+            prepareConfig();
+            renderConfig();
+            renderFilters();
+          })
+          .withFailureHandler(handleError)
+          .saveTrafficConfig(payload);
+      }
+
+      function resetOperacaoForm() {
+        document.getElementById('operacao-id').value = '';
+        document.getElementById('operacao-nome').value = '';
+        document.getElementById('operacao-url').value = '';
+        document.getElementById('operacao-nota').value = '';
+      }
+
+      function resetOperacaoIntegracaoForm() {
+        document.getElementById('operacao-integracao-id').value = '';
+        var select = document.getElementById('operacao-integracao-operacao');
+        if (select) {
+          select.value = '';
+        }
+        document.getElementById('operacao-integracao-empresa').value = '';
+        document.getElementById('operacao-integracao-dominio').value = '';
+        document.getElementById('operacao-integracao-slug').value = '';
+        document.getElementById('operacao-integracao-ativo').checked = false;
+      }
+
+      function resetTrafegoForm() {
+        document.getElementById('trafego-id').value = '';
+        document.getElementById('trafego-source').value = '';
+      }
+
+      function aplicarFiltros() {
+        var operation = document.getElementById('filter-operacao').value;
+        var traffic = document.getElementById('filter-trafego').value;
+        var startDate = document.getElementById('filter-inicio').value;
+        var endDate = document.getElementById('filter-fim').value;
+        var window = document.getElementById('filter-janela').value;
+        if (!operation) {
+          showToast('Selecione uma operação.', 'error');
+          return;
+        }
+        if (!traffic) {
+          showToast('Selecione um tipo de tráfego.', 'error');
+          return;
+        }
+        state.filters.operation = operation;
+        state.filters.traffic = traffic;
+        state.filters.startDate = startDate;
+        state.filters.endDate = endDate;
+        state.filters.window = window;
+        showLoading(true);
+        google.script.run
+          .withSuccessHandler(function (data) {
+            showLoading(false);
+            state.analysis = data;
+            syncDistributionState(data && data.distribution, true);
+            renderAnalysis();
+          })
+          .withFailureHandler(handleError)
+          .getDashboardData({
+            operation: operation,
+            traffic: traffic,
+            startDate: startDate,
+            endDate: endDate,
+            urlWindow: window,
+            distribution: getDistributionPayload()
+          });
+      }
+
+      function renderAnalysis() {
+        var wrapper = document.getElementById('analysis-wrapper');
+        wrapper.innerHTML = '';
+        var data = state.analysis;
+        var siteRows = data && data.site && data.site.rows ? data.site.rows.length : 0;
+        var urlRows = data && data.url && data.url.rows ? data.url.rows.length : 0;
+        var distributionRows = data && data.distribution && data.distribution.sites ? data.distribution.sites.length : 0;
+        var detailedRows = data && data.detailed && data.detailed.hours && data.detailed.hours.length && ((data.detailed.urls && data.detailed.urls.length) || (data.detailed.sites && data.detailed.sites.length)) ? 1 : 0;
+        if (!data || (!siteRows && !urlRows && !distributionRows && !detailedRows)) {
+          wrapper.innerHTML = '<div class="card rounded-2xl p-6 text-center text-slate-400">Nenhum dado encontrado para os filtros selecionados.</div>';
+          document.getElementById('latest-info').textContent = '';
+          return;
+        }
+        if (data && data.distribution) {
+          syncDistributionState(data.distribution);
+        }
+        ensureActiveAnalysisTab(data);
+        if (state.analysisTab !== 'detailed') {
+          cleanupDetailedMetricMenu();
+        }
+        if (state.analysisTab !== 'detailed' && state.detailedChart) {
+          state.detailedChart.destroy();
+          state.detailedChart = null;
+        }
+        wrapper.appendChild(renderAnalysisTabs(data));
+        if (state.analysisTab === 'distribution') {
+          document.getElementById('latest-info').textContent = buildDistributionInfo(data && data.distribution);
+          renderDistributionView(data && data.distribution, wrapper);
+          return;
+        }
+        if (state.analysisTab === 'detailed') {
+          document.getElementById('latest-info').textContent = buildDetailedInfo(data && data.detailed, data && data.filters);
+          renderDetailedView(data && data.detailed, wrapper);
+          return;
+        }
+        if (siteRows || urlRows) {
+          document.getElementById('latest-info').textContent = buildOverviewInfo(data);
+        } else {
+          document.getElementById('latest-info').textContent = '';
+        }
+        if (!siteRows && !urlRows) {
+          var emptyOverview = document.createElement('div');
+          emptyOverview.className = 'card rounded-2xl p-6 text-center text-slate-400';
+          emptyOverview.textContent = 'Sem dados de resumo para os filtros selecionados.';
+          wrapper.appendChild(emptyOverview);
+          return;
+        }
+        if (siteRows) {
+          wrapper.appendChild(renderSiteCard(data.site));
+        }
+        if (urlRows) {
+          wrapper.appendChild(renderUrlCard(data.url, data.filters));
+        }
+      }
+
+      function ensureActiveAnalysisTab(data) {
+        var hasOverview = data && ((data.site && data.site.rows && data.site.rows.length) || (data.url && data.url.rows && data.url.rows.length));
+        var hasDetailed = data && data.detailed && data.detailed.hours && data.detailed.hours.length && ((data.detailed.urls && data.detailed.urls.length) || (data.detailed.sites && data.detailed.sites.length));
+        var hasDistribution = data && data.distribution && data.distribution.sites && data.distribution.sites.length;
+        var current = state.analysisTab;
+        var available = {
+          overview: !!hasOverview,
+          detailed: !!hasDetailed,
+          distribution: !!hasDistribution
+        };
+        if (!available[current]) {
+          if (available.overview) {
+            state.analysisTab = 'overview';
+          } else if (available.detailed) {
+            state.analysisTab = 'detailed';
+          } else if (available.distribution) {
+            state.analysisTab = 'distribution';
+          } else {
+            state.analysisTab = 'overview';
+          }
+        }
+      }
+
+      function renderAnalysisTabs(data) {
+        var tabsCard = document.createElement('div');
+        tabsCard.className = 'card rounded-2xl p-2 flex flex-wrap gap-2';
+        var hasOverview = data && data.site && data.site.rows && data.site.rows.length;
+        hasOverview = hasOverview || (data && data.url && data.url.rows && data.url.rows.length);
+        var hasDistribution = data && data.distribution && data.distribution.sites && data.distribution.sites.length;
+        var hasDetailed = data && data.detailed && data.detailed.hours && data.detailed.hours.length && ((data.detailed.urls && data.detailed.urls.length) || (data.detailed.sites && data.detailed.sites.length));
+        var tabs = [
+          { id: 'overview', label: 'Resumo de desempenho', available: hasOverview },
+          { id: 'detailed', label: 'Análise detalhada', available: hasDetailed },
+          { id: 'distribution', label: 'Distribuição inteligente', available: hasDistribution }
+        ];
+        tabs.forEach(function (tab) {
+          var button = document.createElement('button');
+          button.type = 'button';
+          var isActive = state.analysisTab === tab.id;
+          button.className = 'px-4 py-2 rounded-lg font-semibold transition-colors';
+          if (isActive) {
+            button.classList.add('bg-sky-600', 'text-white');
+          } else {
+            button.classList.add('text-slate-300', 'hover:text-white');
+          }
+          button.textContent = tab.label;
+          if (!tab.available) {
+            button.disabled = true;
+            button.classList.add('opacity-60', 'cursor-not-allowed');
+          } else {
+            button.addEventListener('click', function (ev) {
+              ev.preventDefault();
+              setAnalysisTab(tab.id);
+            });
+          }
+          tabsCard.appendChild(button);
+        });
+        return tabsCard;
+      }
+
+      function buildOverviewInfo(data) {
+        if (!data) return '';
+        var infoParts = [];
+        if (data.filters && data.filters.latestHour) {
+          infoParts.push('Última hora descartada: ' + data.filters.latestHour);
+        }
+        if (data.site && data.site.hours && data.site.hours.length) {
+          var hoursLabels = data.site.hours.map(function (hour) { return hour.label; });
+          if (hoursLabels.length) {
+            infoParts.push('Horas exibidas: ' + hoursLabels.join(', '));
+          }
+        }
+        return infoParts.join(' • ');
+      }
+
+      function buildDetailedInfo(detailed, filters) {
+        if (!detailed) return '';
+        var infoParts = [];
+        if (filters && filters.latestHour) {
+          infoParts.push('Última hora descartada: ' + filters.latestHour);
+        }
+        if (detailed.hours && detailed.hours.length) {
+          var labels = detailed.hours.map(function (hour) { return hour.label; });
+          if (labels.length) {
+            infoParts.push('Horas disponíveis: ' + labels.join(', '));
+          }
+        }
+        return infoParts.join(' • ');
+      }
+
+      function buildDistributionInfo(distribution) {
+        if (!distribution) return '';
+        var infoParts = [];
+        if (distribution.latestHour) {
+          infoParts.push('Última hora descartada: ' + distribution.latestHour);
+        }
+        if (distribution.hours && distribution.hours.length) {
+          infoParts.push('Horas base: ' + distribution.hours.join(', '));
+        }
+        return infoParts.join(' • ');
+      }
+
+      function renderDetailedView(detailed, wrapper) {
+        if (!detailed) {
+          var empty = document.createElement('div');
+          empty.className = 'card rounded-2xl p-6 text-center text-slate-400';
+          empty.textContent = 'Sem dados detalhados disponíveis.';
+          wrapper.appendChild(empty);
+          return;
+        }
+        ensureDetailedState(detailed);
+        wrapper.appendChild(renderDetailedControlsCard(detailed));
+        var selectedItems = getDetailedSelectedItems(detailed);
+        wrapper.appendChild(renderDetailedSummaryCard(detailed, selectedItems));
+        if (!selectedItems.length) {
+          return;
+        }
+        wrapper.appendChild(renderDetailedChartCard(detailed, selectedItems));
+        wrapper.appendChild(renderDetailedTimelineCard(detailed, selectedItems));
+      }
+
+      function renderDetailedControlsCard(detailed) {
+        var card = document.createElement('div');
+        card.className = 'card rounded-2xl p-6 space-y-4';
+        var header = document.createElement('div');
+        header.className = 'flex items-center justify-between flex-wrap gap-3';
+        var title = document.createElement('h3');
+        title.className = 'text-lg font-semibold text-slate-100';
+        title.textContent = 'Controles da análise detalhada';
+        header.appendChild(title);
+        var count = document.createElement('span');
+        count.className = 'text-xs text-slate-400';
+        count.textContent = (state.detailed.mode === 'url' ? 'URLs' : 'Sites') + ' selecionados: ' + state.detailed.selected.length;
+        header.appendChild(count);
+        card.appendChild(header);
+
+        var toggleRow = document.createElement('div');
+        toggleRow.className = 'inline-flex rounded-xl pill p-1';
+        [
+          { key: 'url', label: 'URLs' },
+          { key: 'site', label: 'Sites' }
+        ].forEach(function (option) {
+          var button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'px-4 py-2 rounded-lg font-semibold transition-colors';
+          if (state.detailed.mode === option.key) {
+            button.classList.add('bg-sky-600', 'text-white');
+          } else {
+            button.classList.add('text-slate-300', 'hover:text-white');
+          }
+          button.textContent = option.label;
+          button.addEventListener('click', function (ev) {
+            ev.preventDefault();
+            setDetailedMode(option.key);
+          });
+          toggleRow.appendChild(button);
+        });
+        card.appendChild(toggleRow);
+
+        var searchWrapper = document.createElement('div');
+        searchWrapper.className = 'flex flex-col gap-2';
+        var searchLabel = document.createElement('label');
+        searchLabel.className = 'text-sm text-slate-300';
+        searchLabel.textContent = 'Buscar ' + (state.detailed.mode === 'url' ? 'URLs' : 'sites');
+        searchWrapper.appendChild(searchLabel);
+        var searchInput = document.createElement('input');
+        searchInput.type = 'search';
+        searchInput.className = 'pill px-3 py-2 rounded-lg bg-slate-900/40 text-sm text-slate-100';
+        searchInput.placeholder = 'Digite para filtrar...';
+        searchInput.value = state.detailed.search || '';
+        searchInput.addEventListener('input', function (ev) {
+          updateDetailedSearch(ev.target.value || '');
+        });
+        searchWrapper.appendChild(searchInput);
+        card.appendChild(searchWrapper);
+
+        var bulkActions = document.createElement('div');
+        bulkActions.className = 'flex flex-wrap items-center gap-2 text-xs';
+        var selectAll = document.createElement('button');
+        selectAll.type = 'button';
+        selectAll.className = 'px-3 py-1.5 rounded-lg border border-slate-700/60 bg-slate-900/40 font-semibold text-slate-200 hover:border-sky-500/60 hover:text-white transition-colors';
+        selectAll.textContent = 'Selecionar todos';
+        selectAll.addEventListener('click', function (ev) {
+          ev.preventDefault();
+          selectAllDetailedItems();
+        });
+        bulkActions.appendChild(selectAll);
+        var clearAll = document.createElement('button');
+        clearAll.type = 'button';
+        clearAll.className = 'px-3 py-1.5 rounded-lg border border-transparent text-slate-300 hover:text-white hover:border-slate-700/60 transition-colors';
+        clearAll.textContent = 'Limpar tudo';
+        clearAll.addEventListener('click', function (ev) {
+          ev.preventDefault();
+          clearDetailedSelection();
+        });
+        bulkActions.appendChild(clearAll);
+        card.appendChild(bulkActions);
+
+        var listContainer = document.createElement('div');
+        listContainer.className = 'scroll-list-15 space-y-2 pr-1';
+        var items = getDetailedItems(detailed);
+        var filtered = items;
+        if (state.detailed.search) {
+          var searchLower = state.detailed.search.toLowerCase();
+          filtered = items.filter(function (item) {
+            var primary = (state.detailed.mode === 'url' ? item.url : item.site) || '';
+            var secondary = state.detailed.mode === 'url' ? (item.site || '') : '';
+            return primary.toLowerCase().indexOf(searchLower) !== -1 || secondary.toLowerCase().indexOf(searchLower) !== -1;
+          });
+        }
+        if (!filtered.length) {
+          var empty = document.createElement('div');
+          empty.className = 'text-sm text-slate-400';
+          empty.textContent = items.length ? 'Nenhum item encontrado com o filtro atual.' : 'Nenhum item disponível para análise.';
+          listContainer.appendChild(empty);
+        } else {
+          filtered.forEach(function (item) {
+            var isChecked = state.detailed.selected.indexOf(item.key) !== -1;
+            var option = document.createElement('label');
+            option.className = 'flex items-center justify-between gap-3 px-3 py-2 rounded-xl border transition-all cursor-pointer';
+            option.classList.add('border-slate-700/60', 'bg-slate-900/30');
+            if (isChecked) {
+              option.classList.add('border-sky-500/60', 'bg-sky-500/10');
+            }
+            var textWrapper = document.createElement('div');
+            textWrapper.className = 'flex flex-col';
+            var titleLine = document.createElement('span');
+            titleLine.className = 'text-sm font-semibold text-slate-100 break-all';
+            titleLine.textContent = state.detailed.mode === 'url' ? item.url : item.site;
+            textWrapper.appendChild(titleLine);
+            if (state.detailed.mode === 'url') {
+              var subtitle = document.createElement('span');
+              subtitle.className = 'text-xs text-slate-400';
+              subtitle.textContent = item.site || '';
+              textWrapper.appendChild(subtitle);
+            }
+            var metricLine = document.createElement('span');
+            metricLine.className = 'text-xs text-slate-400';
+            metricLine.textContent = 'Sessões: ' + formatNumber(item.totals.sessions || 0) + ' • eCPM Efetivo: ' + formatCurrency(item.totals.effectiveEcpm || 0);
+            textWrapper.appendChild(metricLine);
+            option.appendChild(textWrapper);
+
+            var checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.checked = isChecked;
+            checkbox.className = 'h-4 w-4 text-sky-500';
+            checkbox.addEventListener('change', function () {
+              toggleDetailedSelection(item.key);
+            });
+            option.appendChild(checkbox);
+            option.addEventListener('click', function (ev) {
+              if (ev.target !== checkbox) {
+                ev.preventDefault();
+                checkbox.click();
+              }
+            });
+            listContainer.appendChild(option);
+          });
+        }
+        card.appendChild(listContainer);
+
+        return card;
+      }
+
+      function getDetailedItems(detailed) {
+        if (!detailed) return [];
+        return state.detailed.mode === 'url' ? (detailed.urls || []) : (detailed.sites || []);
+      }
+
+      function getDetailedSelectedItems(detailed) {
+        var items = getDetailedItems(detailed);
+        var selectedSet = {};
+        (state.detailed.selected || []).forEach(function (key) { selectedSet[key] = true; });
+        return items.filter(function (item) {
+          return selectedSet[item.key];
+        });
+      }
+
+      function ensureDetailedState(detailed) {
+        if (!state.detailed) {
+          state.detailed = { mode: 'url', selected: [], metrics: ['revenue'], search: '', allowEmpty: false };
+        }
+        if (typeof state.detailed.allowEmpty === 'undefined') {
+          state.detailed.allowEmpty = false;
+        }
+        var hasUrls = detailed && detailed.urls && detailed.urls.length;
+        var hasSites = detailed && detailed.sites && detailed.sites.length;
+        if (state.detailed.mode === 'url' && !hasUrls && hasSites) {
+          state.detailed.mode = 'site';
+        } else if (state.detailed.mode === 'site' && !hasSites && hasUrls) {
+          state.detailed.mode = 'url';
+        }
+        var items = getDetailedItems(detailed);
+        var validKeys = {};
+        items.forEach(function (item) { validKeys[item.key] = true; });
+        state.detailed.selected = (state.detailed.selected || []).filter(function (key) { return validKeys[key]; });
+        if (!state.detailed.selected.length && items.length && !state.detailed.allowEmpty) {
+          var limit = Math.min(items.length, state.detailed.mode === 'url' ? 5 : 3);
+          var defaults = [];
+          for (var i = 0; i < limit; i++) {
+            defaults.push(items[i].key);
+          }
+          state.detailed.selected = defaults;
+          state.detailed.allowEmpty = false;
+        }
+        if (!state.detailed.metrics || !state.detailed.metrics.length) {
+          state.detailed.metrics = ['revenue'];
+        }
+      }
+
+      function setDetailedMode(mode) {
+        if (state.detailed.mode === mode) return;
+        state.detailed.mode = mode;
+        state.detailed.allowEmpty = false;
+        ensureDetailedState(state.analysis && state.analysis.detailed);
+        renderAnalysis();
+      }
+
+      function updateDetailedSearch(value) {
+        state.detailed.search = value || '';
+        renderAnalysis();
+      }
+
+      function toggleDetailedSelection(key) {
+        var index = state.detailed.selected.indexOf(key);
+        if (index === -1) {
+          state.detailed.selected.push(key);
+        } else {
+          state.detailed.selected.splice(index, 1);
+        }
+        state.detailed.allowEmpty = state.detailed.selected.length === 0;
+        renderAnalysis();
+      }
+
+      function selectAllDetailedItems() {
+        if (!state.analysis || !state.analysis.detailed) return;
+        var items = getDetailedItems(state.analysis.detailed);
+        state.detailed.selected = items.map(function (item) { return item.key; });
+        state.detailed.allowEmpty = false;
+        renderAnalysis();
+      }
+
+      function clearDetailedSelection() {
+        state.detailed.selected = [];
+        state.detailed.allowEmpty = true;
+        renderAnalysis();
+      }
+
+      function toggleDetailedMetric(metricKey, isChecked) {
+        var metrics = state.detailed.metrics.slice();
+        var index = metrics.indexOf(metricKey);
+        if (isChecked && index === -1) {
+          metrics.push(metricKey);
+        } else if (!isChecked && index !== -1) {
+          metrics.splice(index, 1);
+        }
+        if (!metrics.length) {
+          return renderAnalysis();
+        }
+        state.detailed.metrics = metrics;
+        renderAnalysis();
+      }
+
+      function cleanupDetailedMetricMenu() {
+        if (state.detailedMetricMenuCleanup) {
+          state.detailedMetricMenuCleanup();
+          state.detailedMetricMenuCleanup = null;
+        }
+      }
+
+      function buildDetailedMetricsSummary() {
+        var selected = state.detailed && state.detailed.metrics ? state.detailed.metrics.slice() : [];
+        if (!selected.length) {
+          return 'Nenhuma métrica';
+        }
+        var labels = selected.map(function (key) {
+          var meta = getDetailedMetricMeta(key);
+          return meta ? meta.label : key;
+        });
+        if (labels.length <= 2) {
+          return labels.join(', ');
+        }
+        return labels.slice(0, 2).join(', ') + ' +' + (labels.length - 2);
+      }
+
+      function buildDetailedMetricsDropdown() {
+        var wrapper = document.createElement('div');
+        wrapper.className = 'relative';
+        var button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-700/60 bg-slate-900/40 text-xs font-semibold text-slate-200 hover:border-sky-500/60 hover:text-white transition-colors';
+        var summaryText = buildDetailedMetricsSummary();
+        button.title = 'Selecione as métricas exibidas no gráfico. Atuais: ' + summaryText;
+        var label = document.createElement('span');
+        label.className = 'text-xs font-semibold text-slate-200 truncate max-w-[14rem]';
+        label.textContent = 'Métricas: ' + summaryText;
+        button.appendChild(label);
+        var caret = document.createElement('span');
+        caret.className = 'text-slate-400 text-sm';
+        caret.textContent = '▾';
+        button.appendChild(caret);
+        wrapper.appendChild(button);
+
+        var menu = document.createElement('div');
+        menu.className = 'absolute right-0 mt-2 w-64 rounded-xl border border-slate-700/70 bg-slate-900/95 shadow-xl p-3 space-y-3 hidden z-30';
+        var header = document.createElement('div');
+        header.className = 'flex items-center justify-between';
+        var menuTitle = document.createElement('span');
+        menuTitle.className = 'text-xs font-semibold text-slate-200';
+        menuTitle.textContent = 'Métricas disponíveis';
+        header.appendChild(menuTitle);
+        var helper = document.createElement('span');
+        helper.className = 'text-[0.65rem] text-slate-400';
+        helper.textContent = 'Escolha ao menos uma opção';
+        header.appendChild(helper);
+        menu.appendChild(header);
+
+        DETAILED_METRICS.forEach(function (metric) {
+          var isSelected = state.detailed.metrics.indexOf(metric.key) !== -1;
+          var option = document.createElement('label');
+          option.className = 'flex items-center justify-between gap-3 px-3 py-2 rounded-lg border transition-colors cursor-pointer';
+          option.classList.add('border-transparent');
+          if (isSelected) {
+            option.classList.add('bg-sky-500/10', 'border-sky-500/60');
+          } else {
+            option.classList.add('hover:border-slate-700/70', 'hover:bg-slate-800/60');
+          }
+          var name = document.createElement('span');
+          name.className = 'text-xs text-slate-200';
+          name.textContent = metric.label;
+          option.appendChild(name);
+          var checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.checked = isSelected;
+          checkbox.className = 'h-4 w-4 text-sky-500';
+          checkbox.addEventListener('change', function () {
+            toggleDetailedMetric(metric.key, checkbox.checked);
+          });
+          option.appendChild(checkbox);
+          menu.appendChild(option);
+        });
+
+        wrapper.appendChild(menu);
+
+        button.addEventListener('click', function (ev) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          var willOpen = menu.classList.contains('hidden');
+          cleanupDetailedMetricMenu();
+          if (willOpen) {
+            menu.classList.remove('hidden');
+            var handleOutside = function (event) {
+              if (!wrapper.contains(event.target)) {
+                cleanupDetailedMetricMenu();
+              }
+            };
+            var handleEscape = function (event) {
+              if (event.key === 'Escape') {
+                cleanupDetailedMetricMenu();
+              }
+            };
+            state.detailedMetricMenuCleanup = function () {
+              document.removeEventListener('click', handleOutside);
+              document.removeEventListener('keydown', handleEscape);
+              menu.classList.add('hidden');
+            };
+            document.addEventListener('click', handleOutside);
+            document.addEventListener('keydown', handleEscape);
+          }
+        });
+
+        return wrapper;
+      }
+
+      function renderDetailedSummaryCard(detailed, items) {
+        var card = document.createElement('div');
+        card.className = 'card rounded-2xl p-6 space-y-4';
+        var header = document.createElement('div');
+        header.className = 'flex items-center justify-between flex-wrap gap-3';
+        var title = document.createElement('h3');
+        title.className = 'text-lg font-semibold text-slate-100';
+        title.textContent = 'Resumo das seleções';
+        header.appendChild(title);
+        if (items.length) {
+          var hint = document.createElement('span');
+          hint.className = 'text-xs text-slate-400';
+          hint.textContent = 'Valores ajustados por RevShare';
+          header.appendChild(hint);
+        }
+        card.appendChild(header);
+        if (!items.length) {
+          var empty = document.createElement('div');
+          empty.className = 'text-sm text-slate-400';
+          empty.textContent = 'Selecione pelo menos uma ' + (state.detailed.mode === 'url' ? 'URL' : 'site') + ' para analisar.';
+          card.appendChild(empty);
+          return card;
+        }
+        var table = document.createElement('div');
+        table.className = 'overflow-auto';
+        var html = '';
+        html += '<table class="w-full text-sm min-w-max">';
+        html += '<thead class="text-slate-200">';
+        if (state.detailed.mode === 'url') {
+          html += '<tr>' +
+            '<th class="px-3 py-2 text-left font-semibold">URL</th>' +
+            '<th class="px-3 py-2 text-left font-semibold">Site</th>' +
+            '<th class="px-3 py-2 text-right font-semibold">Sessões</th>' +
+            '<th class="px-3 py-2 text-right font-semibold">Receita ($)</th>' +
+            '<th class="px-3 py-2 text-right font-semibold">RPS ($)</th>' +
+            '<th class="px-3 py-2 text-right font-semibold">Cobertura (%)</th>' +
+            '<th class="px-3 py-2 text-right font-semibold">eCPM ($)</th>' +
+            '<th class="px-3 py-2 text-right font-semibold">eCPM Efetivo ($)</th>' +
+            '</tr>';
+        } else {
+          html += '<tr>' +
+            '<th class="px-3 py-2 text-left font-semibold">Site</th>' +
+            '<th class="px-3 py-2 text-right font-semibold">Sessões</th>' +
+            '<th class="px-3 py-2 text-right font-semibold">Receita ($)</th>' +
+            '<th class="px-3 py-2 text-right font-semibold">RPS ($)</th>' +
+            '<th class="px-3 py-2 text-right font-semibold">Cobertura (%)</th>' +
+            '<th class="px-3 py-2 text-right font-semibold">eCPM ($)</th>' +
+            '<th class="px-3 py-2 text-right font-semibold">eCPM Efetivo ($)</th>' +
+            '</tr>';
+        }
+        html += '</thead><tbody class="divide-y divide-slate-800/60">';
+        items.forEach(function (item) {
+          var totals = item.totals || {};
+          if (state.detailed.mode === 'url') {
+            html += '<tr>' +
+              '<td class="px-3 py-2 text-sky-300 break-all">' + escapeHtml(item.url || '') + '</td>' +
+              '<td class="px-3 py-2 text-slate-300">' + escapeHtml(item.site || '') + '</td>' +
+              '<td class="px-3 py-2 text-right">' + formatNumber(totals.sessions) + '</td>' +
+              '<td class="px-3 py-2 text-right">' + formatCurrency(totals.revenue) + '</td>' +
+              '<td class="px-3 py-2 text-right">' + formatCurrency(totals.rps) + '</td>' +
+              '<td class="px-3 py-2 text-right">' + formatPercent(totals.coverage) + '</td>' +
+              '<td class="px-3 py-2 text-right">' + formatCurrency(totals.ecpm) + '</td>' +
+              '<td class="px-3 py-2 text-right">' + formatCurrency(totals.effectiveEcpm) + '</td>' +
+              '</tr>';
+          } else {
+            html += '<tr>' +
+              '<td class="px-3 py-2 text-slate-200 font-medium">' + escapeHtml(item.site || '') + '</td>' +
+              '<td class="px-3 py-2 text-right">' + formatNumber(totals.sessions) + '</td>' +
+              '<td class="px-3 py-2 text-right">' + formatCurrency(totals.revenue) + '</td>' +
+              '<td class="px-3 py-2 text-right">' + formatCurrency(totals.rps) + '</td>' +
+              '<td class="px-3 py-2 text-right">' + formatPercent(totals.coverage) + '</td>' +
+              '<td class="px-3 py-2 text-right">' + formatCurrency(totals.ecpm) + '</td>' +
+              '<td class="px-3 py-2 text-right">' + formatCurrency(totals.effectiveEcpm) + '</td>' +
+              '</tr>';
+          }
+        });
+        var combined = computeDetailedTotals(items);
+        html += '<tr class="bg-slate-900/60 text-slate-100 font-semibold">' +
+          (state.detailed.mode === 'url' ? '<td class="px-3 py-2">Total selecionado</td><td class="px-3 py-2"></td>' : '<td class="px-3 py-2">Total selecionado</td>') +
+          '<td class="px-3 py-2 text-right">' + formatNumber(combined.sessions) + '</td>' +
+          '<td class="px-3 py-2 text-right">' + formatCurrency(combined.revenue) + '</td>' +
+          '<td class="px-3 py-2 text-right">' + formatCurrency(combined.rps) + '</td>' +
+          '<td class="px-3 py-2 text-right">' + formatPercent(combined.coverage) + '</td>' +
+          '<td class="px-3 py-2 text-right">' + formatCurrency(combined.ecpm) + '</td>' +
+          '<td class="px-3 py-2 text-right">' + formatCurrency(combined.effectiveEcpm) + '</td>' +
+          '</tr>';
+        html += '</tbody></table>';
+        table.innerHTML = html;
+        card.appendChild(table);
+        return card;
+      }
+
+      function computeDetailedTotals(items) {
+        var totals = {
+          sessions: 0,
+          revenue: 0,
+          mobTopRequests: 0,
+          mobTopCoverageWeighted: 0,
+          mobTopAdjustedEcpmWeighted: 0
+        };
+        items.forEach(function (item) {
+          var data = item.totals || {};
+          totals.sessions += Number(data.sessions || 0);
+          totals.revenue += Number(data.revenue || 0);
+          totals.mobTopRequests += Number(data.mobTopRequests || 0);
+          totals.mobTopCoverageWeighted += Number(data.mobTopCoverageWeighted || 0);
+          totals.mobTopAdjustedEcpmWeighted += Number(data.mobTopAdjustedEcpmWeighted || 0);
+        });
+        var coverageRatio = totals.mobTopRequests ? totals.mobTopCoverageWeighted / totals.mobTopRequests : 0;
+        var ecpm = totals.mobTopRequests ? totals.mobTopAdjustedEcpmWeighted / totals.mobTopRequests : 0;
+        return {
+          sessions: totals.sessions,
+          revenue: totals.revenue,
+          rps: computeRpsValue(totals.revenue, totals.sessions),
+          coverage: coverageRatio * 100,
+          ecpm: ecpm,
+          effectiveEcpm: ecpm * coverageRatio
+        };
+      }
+
+      function renderDetailedChartCard(detailed, items) {
+        cleanupDetailedMetricMenu();
+        var card = document.createElement('div');
+        card.className = 'card rounded-2xl p-6 space-y-4';
+        var header = document.createElement('div');
+        header.className = 'flex flex-wrap items-start justify-between gap-3';
+        var heading = document.createElement('div');
+        heading.className = 'flex flex-col gap-1';
+        var title = document.createElement('h3');
+        title.className = 'text-lg font-semibold text-slate-100';
+        title.textContent = 'Série temporal das métricas selecionadas';
+        heading.appendChild(title);
+        var legend = document.createElement('span');
+        legend.className = 'text-xs text-slate-400';
+        legend.textContent = 'Cada linha representa a métrica escolhida por item';
+        heading.appendChild(legend);
+        header.appendChild(heading);
+        var actions = document.createElement('div');
+        actions.className = 'flex items-center gap-2';
+        actions.appendChild(buildDetailedMetricsDropdown());
+        header.appendChild(actions);
+        card.appendChild(header);
+        if (!detailed.hours || !detailed.hours.length) {
+          var empty = document.createElement('div');
+          empty.className = 'text-sm text-slate-400';
+          empty.textContent = 'Sem recortes horários suficientes para gerar o gráfico.';
+          card.appendChild(empty);
+          return card;
+        }
+        var container = document.createElement('div');
+        container.className = 'relative w-full rounded-2xl border border-slate-800/60 bg-slate-900/30 overflow-hidden';
+        container.style.height = '420px';
+        container.style.minHeight = '420px';
+        container.style.maxHeight = '420px';
+        var canvas = document.createElement('canvas');
+        canvas.className = 'w-full h-full';
+        canvas.height = 420;
+        container.appendChild(canvas);
+        card.appendChild(container);
+        updateDetailedChart(canvas, detailed, items);
+        return card;
+      }
+
+      function updateDetailedChart(canvas, detailed, items) {
+        if (state.detailedChart) {
+          state.detailedChart.destroy();
+          state.detailedChart = null;
+        }
+        if (!items.length || !detailed.hours || !detailed.hours.length) {
+          return;
+        }
+        var metricKeys = state.detailed.metrics && state.detailed.metrics.length ? state.detailed.metrics.slice() : ['revenue'];
+        var labels = detailed.hours.map(function (hour) { return hour.label; });
+        var datasets = [];
+        items.forEach(function (item, itemIndex) {
+          metricKeys.forEach(function (metricKey, metricIndex) {
+            var colorIndex = (itemIndex * metricKeys.length + metricIndex) % DETAILED_COLORS.length;
+            var color = DETAILED_COLORS[colorIndex];
+            var hourValues = detailed.hours.map(function (hour) {
+              var data = getDetailedHourData(item, hour.key);
+              return Number(data[metricKey] || 0);
+            });
+            datasets.push({
+              label: buildDetailedDatasetLabel(item, metricKey),
+              data: hourValues,
+              borderColor: color,
+              backgroundColor: hexToRgba(color, 0.25),
+              borderWidth: 2,
+              tension: 0.25,
+              fill: false,
+              spanGaps: true,
+              detailedMetric: metricKey
+            });
+          });
+        });
+        if (!datasets.length) {
+          return;
+        }
+        var context = canvas.getContext('2d');
+        state.detailedChart = new Chart(context, {
+          type: 'line',
+          data: { labels: labels, datasets: datasets },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                labels: {
+                  color: '#cbd5f5',
+                  boxWidth: 12
+                }
+              },
+              tooltip: {
+                callbacks: {
+                  label: function (context) {
+                    var metric = context.dataset.detailedMetric;
+                    var value = context.parsed.y;
+                    return context.dataset.label + ': ' + formatDetailedMetricValue(metric, value);
+                  }
+                }
+              },
+              datalabels: {
+                align: 'top',
+                anchor: 'end',
+                backgroundColor: function (context) {
+                  var color = context.dataset && context.dataset.borderColor ? context.dataset.borderColor : '#38bdf8';
+                  return hexToRgba(color, 0.55);
+                },
+                borderRadius: 6,
+                clamp: true,
+                color: '#e2e8f0',
+                font: {
+                  size: 10,
+                  weight: '600'
+                },
+                formatter: function (value, context) {
+                  if (value === null || typeof value === 'undefined') {
+                    return '';
+                  }
+                  return formatDetailedMetricValue(context.dataset.detailedMetric, value);
+                },
+                offset: 6,
+                padding: {
+                  top: 2,
+                  right: 4,
+                  bottom: 2,
+                  left: 4
+                }
+              }
+            },
+            scales: {
+              x: {
+                ticks: { color: '#94a3b8' },
+                grid: { color: 'rgba(148, 163, 184, 0.15)' }
+              },
+              y: {
+                ticks: {
+                  color: '#94a3b8',
+                  callback: function (value) {
+                    return Number(value || 0).toLocaleString('pt-BR', { maximumFractionDigits: 2 });
+                  }
+                },
+                grid: { color: 'rgba(148, 163, 184, 0.12)' }
+              }
+            }
+          }
+        });
+      }
+
+      function buildDetailedDatasetLabel(item, metricKey) {
+        var meta = getDetailedMetricMeta(metricKey);
+        var base = meta ? meta.label : metricKey;
+        var name = state.detailed.mode === 'url' ? (item.url || '') : (item.site || '');
+        return (name || 'Item') + ' • ' + base;
+      }
+
+      function getDetailedMetricMeta(metricKey) {
+        for (var i = 0; i < DETAILED_METRICS.length; i++) {
+          if (DETAILED_METRICS[i].key === metricKey) {
+            return DETAILED_METRICS[i];
+          }
+        }
+        return null;
+      }
+
+      function formatDetailedMetricValue(metricKey, value) {
+        var meta = getDetailedMetricMeta(metricKey);
+        if (!meta) {
+          return Number(value || 0).toLocaleString('pt-BR', { maximumFractionDigits: 2 });
+        }
+        if (meta.type === 'currency') {
+          return formatCurrency(value);
+        }
+        if (meta.type === 'percent') {
+          return formatPercent(value);
+        }
+        return Number(value || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 });
+      }
+
+      function hexToRgba(hex, alpha) {
+        if (!hex) return 'rgba(148, 163, 184, ' + (alpha != null ? alpha : 1) + ')';
+        var sanitized = hex.replace('#', '');
+        if (sanitized.length === 3) {
+          sanitized = sanitized.split('').map(function (char) { return char + char; }).join('');
+        }
+        var bigint = parseInt(sanitized, 16);
+        if (isNaN(bigint)) {
+          return 'rgba(148, 163, 184, ' + (alpha != null ? alpha : 1) + ')';
+        }
+        var r = (bigint >> 16) & 255;
+        var g = (bigint >> 8) & 255;
+        var b = bigint & 255;
+        var opacity = alpha != null ? alpha : 1;
+        return 'rgba(' + r + ', ' + g + ', ' + b + ', ' + opacity + ')';
+      }
+
+      function renderDetailedTimelineCard(detailed, items) {
+        var card = document.createElement('div');
+        card.className = 'card rounded-2xl p-6 space-y-4';
+        var title = document.createElement('h3');
+        title.className = 'text-lg font-semibold text-slate-100';
+        title.textContent = 'Evolução horária agregada';
+        card.appendChild(title);
+        if (!detailed.hours || !detailed.hours.length) {
+          var empty = document.createElement('div');
+          empty.className = 'text-sm text-slate-400';
+          empty.textContent = 'Sem horas disponíveis para montar a série temporal.';
+          card.appendChild(empty);
+          return card;
+        }
+        var table = document.createElement('div');
+        table.className = 'overflow-auto';
+        var html = '';
+        html += '<table class="w-full text-sm min-w-max">';
+        html += '<thead class="text-slate-200">';
+        html += '<tr>' +
+          '<th class="px-3 py-2 text-left font-semibold">Hora</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">Sessões</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">Receita ($)</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">RPS ($)</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">Cobertura (%)</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">eCPM ($)</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">eCPM Efetivo ($)</th>' +
+          '</tr>';
+        html += '</thead><tbody class="divide-y divide-slate-800/60">';
+        detailed.hours.forEach(function (hour) {
+          var aggregate = computeDetailedHourAggregate(items, hour.key);
+          html += '<tr>' +
+            '<td class="px-3 py-2 text-slate-200">' + escapeHtml(hour.label) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatNumber(aggregate.sessions) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatCurrency(aggregate.revenue) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatCurrency(aggregate.rps) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatPercent(aggregate.coverage) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatCurrency(aggregate.ecpm) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatCurrency(aggregate.effectiveEcpm) + '</td>' +
+            '</tr>';
+        });
+        html += '</tbody></table>';
+        table.innerHTML = html;
+        card.appendChild(table);
+        return card;
+      }
+
+      function getDetailedHourData(item, hourKey) {
+        if (!item || !item.hourly) {
+          return {
+            sessions: 0,
+            revenue: 0,
+            rps: 0,
+            coverage: 0,
+            ecpm: 0,
+            effectiveEcpm: 0,
+            mobTopRequests: 0,
+            mobTopCoverageWeighted: 0,
+            mobTopAdjustedEcpmWeighted: 0
+          };
+        }
+        var direct = item.hourly[hourKey];
+        if (direct) return direct;
+        var stringKey = String(hourKey);
+        if (item.hourly.hasOwnProperty(stringKey)) {
+          return item.hourly[stringKey];
+        }
+        return {
+          sessions: 0,
+          revenue: 0,
+          rps: 0,
+          coverage: 0,
+          ecpm: 0,
+          effectiveEcpm: 0,
+          mobTopRequests: 0,
+          mobTopCoverageWeighted: 0,
+          mobTopAdjustedEcpmWeighted: 0
+        };
+      }
+
+      function computeDetailedHourAggregate(items, hourKey) {
+        var totals = {
+          sessions: 0,
+          revenue: 0,
+          mobTopRequests: 0,
+          mobTopCoverageWeighted: 0,
+          mobTopAdjustedEcpmWeighted: 0
+        };
+        items.forEach(function (item) {
+          var hourData = getDetailedHourData(item, hourKey);
+          totals.sessions += Number(hourData.sessions || 0);
+          totals.revenue += Number(hourData.revenue || 0);
+          totals.mobTopRequests += Number(hourData.mobTopRequests || 0);
+          totals.mobTopCoverageWeighted += Number(hourData.mobTopCoverageWeighted || 0);
+          totals.mobTopAdjustedEcpmWeighted += Number(hourData.mobTopAdjustedEcpmWeighted || 0);
+        });
+        var coverageRatio = totals.mobTopRequests ? totals.mobTopCoverageWeighted / totals.mobTopRequests : 0;
+        var ecpm = totals.mobTopRequests ? totals.mobTopAdjustedEcpmWeighted / totals.mobTopRequests : 0;
+        return {
+          sessions: totals.sessions,
+          revenue: totals.revenue,
+          rps: computeRpsValue(totals.revenue, totals.sessions),
+          coverage: coverageRatio * 100,
+          ecpm: ecpm,
+          effectiveEcpm: ecpm * coverageRatio
+        };
+      }
+
+      function renderDistributionView(distribution, wrapper) {
+        if (!distribution) {
+          var empty = document.createElement('div');
+          empty.className = 'card rounded-2xl p-6 text-center text-slate-400';
+          empty.textContent = 'Sem dados suficientes para sugerir distribuição inteligente.';
+          wrapper.appendChild(empty);
+          return;
+        }
+        resolveDistributionSelection(distribution);
+        wrapper.appendChild(renderDistributionControlsCard(distribution));
+        wrapper.appendChild(renderDistributionSitesCard(distribution));
+        var globalCard = renderDistributionGlobalUrlsCard(distribution);
+        if (globalCard) {
+          wrapper.appendChild(globalCard);
+        }
+        wrapper.appendChild(renderDistributionUrlsCard(distribution));
+      }
+
+      function renderDistributionControlsCard(distribution) {
+        var card = document.createElement('div');
+        card.className = 'card rounded-2xl p-6 space-y-4';
+        var header = document.createElement('div');
+        header.className = 'flex items-center justify-between flex-wrap gap-3';
+        var title = document.createElement('h3');
+        title.className = 'text-lg font-semibold text-slate-100';
+        title.textContent = 'Controles globais da distribuição';
+        header.appendChild(title);
+        if (state.distribution.dirty) {
+          var badge = document.createElement('span');
+          badge.className = 'inline-flex items-center gap-1 text-xs font-semibold text-amber-300 bg-amber-500/10 border border-amber-400/40 px-3 py-1 rounded-full';
+          badge.innerHTML = '<svg class="w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 20 20"><path d="M10.75 2.75a.75.75 0 00-1.5 0v6.728l-3.614 3.613a.75.75 0 101.06 1.06l4-4A.75.75 0 0010.75 9.75V2.75z"/><path d="M4.25 13a.75.75 0 10-1.5 0v2.25A2.75 2.75 0 005.5 18h9a2.75 2.75 0 002.75-2.75V13a.75.75 0 10-1.5 0v2.25c0 .69-.56 1.25-1.25 1.25h-9c-.69 0-1.25-.56-1.25-1.25V13z"/></svg> Ajustes pendentes';
+          header.appendChild(badge);
+        }
+        card.appendChild(header);
+
+        var params = (state.distribution && state.distribution.params) || distribution.controls || {};
+        var fields = [
+          { key: 'totalSessions', label: 'Sessões alvo', type: 'number', step: 500, min: 1000, decimals: 0 },
+          { key: 'tau', label: 'Temperatura global (τ)', type: 'number', step: 1, min: 1, decimals: 0 },
+          { key: 'tauLocal', label: 'Temperatura local (τ local)', type: 'number', step: 1, min: 1, decimals: 0 },
+          { key: 'reliabilityK', label: 'K de confiabilidade', type: 'number', step: 10, min: 0, decimals: 0 },
+          { key: 'ucbZ', label: 'Fator UCB (z)', type: 'number', step: 1, min: 0, decimals: 0 },
+          { key: 'siteMinShare', label: 'Share mínimo por site (%)', percent: true, step: 0.5, min: 0, decimals: 1 },
+          { key: 'siteMaxShare', label: 'Share máximo por site (%)', percent: true, step: 0.5, min: 0, decimals: 1 },
+          { key: 'siteStep', label: 'Passo máximo site (%)', percent: true, step: 1, min: 0, decimals: 1 },
+          { key: 'urlSeedPercent', label: 'Seed mínimo URL (%)', percent: true, step: 0.5, min: 0, decimals: 1 },
+          { key: 'urlSeedSessions', label: 'Seed mínimo URL (sessões)', type: 'number', step: 10, min: 0, decimals: 0 },
+          { key: 'urlMinRecipients', label: 'URLs prioritárias', type: 'number', step: 1, min: 0, decimals: 0 },
+          { key: 'urlTargetRecipients', label: 'URLs ativas (limite)', type: 'number', step: 1, min: 0, decimals: 0 },
+          { key: 'urlMaxShare', label: 'Teto por URL (%)', percent: true, step: 0.5, min: 0, decimals: 1 },
+          { key: 'urlStep', label: 'Passo máximo URL (%)', percent: true, step: 1, min: 0, decimals: 1 },
+          { key: 'modeThresholdRps', label: 'Limite RPS modo apostas ($)', type: 'number', step: 10, min: 0, decimals: 0 },
+          { key: 'modeThresholdCv', label: 'Limite CV modo apostas (%)', percent: true, step: 0.5, min: 0, decimals: 1 },
+          { key: 'controlReserve', label: 'Reserva controle (%)', percent: true, step: 0.5, min: 0, decimals: 1 }
+        ];
+
+        var grid = document.createElement('div');
+        grid.className = 'grid gap-4 md:grid-cols-2 xl:grid-cols-4';
+        fields.forEach(function (field) {
+          var wrapper = document.createElement('label');
+          wrapper.className = 'flex flex-col gap-1 text-sm text-slate-300';
+          wrapper.textContent = field.label;
+          var input = document.createElement('input');
+          input.type = field.type || 'number';
+          input.className = 'pill px-3 py-2 rounded-lg bg-slate-900/40 text-sm text-slate-100';
+          if (field.step != null) input.step = field.step;
+          if (field.min != null) input.min = field.min;
+          if (field.max != null) input.max = field.max;
+          var value = params[field.key];
+          if (value != null && value !== '') {
+            var numeric = Number(value);
+            if (field.percent) {
+              numeric = numeric * 100;
+            }
+            var decimals = field.decimals != null ? field.decimals : 2;
+            input.value = numeric.toFixed(decimals);
+          }
+          input.addEventListener('change', function (ev) {
+            var raw = parseFloat(ev.target.value);
+            if (isNaN(raw)) return;
+            var normalized = field.percent ? raw / 100 : raw;
+            updateDistributionParam(field.key, normalized);
+            renderAnalysis();
+          });
+          wrapper.appendChild(input);
+          grid.appendChild(wrapper);
+        });
+        card.appendChild(grid);
+
+        var toggleRow = document.createElement('div');
+        toggleRow.className = 'flex flex-wrap items-center justify-between gap-3 text-sm text-slate-300';
+        var requireLabel = document.createElement('label');
+        requireLabel.className = 'inline-flex items-center gap-2';
+        var requireInput = document.createElement('input');
+        requireInput.type = 'checkbox';
+        requireInput.checked = !!params.urlRequireAll;
+        requireInput.addEventListener('change', function (ev) {
+          updateDistributionParam('urlRequireAll', ev.target.checked ? 1 : 0);
+          renderAnalysis();
+        });
+        requireLabel.appendChild(requireInput);
+        var requireText = document.createElement('span');
+        requireText.textContent = 'Garantir seed mínimo para todas as URLs';
+        requireLabel.appendChild(requireText);
+        toggleRow.appendChild(requireLabel);
+        var toggleHint = document.createElement('p');
+        toggleHint.className = 'text-xs text-slate-400';
+        toggleHint.textContent = 'Quando desativado, apenas as URLs prioritárias recebem o seed mínimo configurado.';
+        toggleRow.appendChild(toggleHint);
+        card.appendChild(toggleRow);
+
+        var quickActions = document.createElement('div');
+        quickActions.className = 'flex flex-wrap items-center justify-between gap-3';
+        var actionsLeft = document.createElement('div');
+        actionsLeft.className = 'flex flex-wrap gap-2';
+        var actionButtons = [
+          { label: 'Seed 50', handler: function () { updateDistributionParam('urlSeedSessions', 50); } },
+          { label: 'Seed 100', handler: function () { updateDistributionParam('urlSeedSessions', 100); } },
+          { label: 'Seed 200', handler: function () { updateDistributionParam('urlSeedSessions', 200); } },
+          { label: 'Teto 35%', handler: function () { updateDistributionParam('urlMaxShare', 0.35); } },
+          { label: 'Teto 25%', handler: function () { updateDistributionParam('urlMaxShare', 0.25); } },
+          { label: 'Desligar apostas', handler: function () { updateDistributionParam('exploitPortion', 1); updateDistributionParam('explorePortion', 0); } }
+        ];
+        actionButtons.forEach(function (action) {
+          var btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'px-3 py-1.5 rounded-lg border border-slate-600/60 text-xs text-slate-200 hover:bg-slate-800/70 transition-colors';
+          btn.textContent = action.label;
+          btn.addEventListener('click', function (ev) {
+            ev.preventDefault();
+            action.handler();
+            renderAnalysis();
+          });
+          actionsLeft.appendChild(btn);
+        });
+        quickActions.appendChild(actionsLeft);
+
+        var applyButton = document.createElement('button');
+        applyButton.type = 'button';
+        applyButton.id = 'btn-distribuicao-aplicar';
+        applyButton.className = 'inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-5 py-2.5 rounded-xl shadow-lg shadow-emerald-900/40 transition-all';
+        applyButton.innerHTML = '<svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>Recalcular plano';
+        applyButton.addEventListener('click', function (ev) {
+          ev.preventDefault();
+          recalcularDistribuicao();
+        });
+        quickActions.appendChild(applyButton);
+        card.appendChild(quickActions);
+
+        var summary = document.createElement('p');
+        summary.className = 'text-xs text-slate-400';
+        summary.textContent = 'Plano atual considera ' + formatNumber(distribution.totalSessions || params.totalSessions || 0) + ' sessões alvo.';
+        card.appendChild(summary);
+
+        return card;
+      }
+
+      function renderDistributionSitesCard(distribution) {
+        var card = document.createElement('div');
+        card.className = 'card rounded-2xl p-6 space-y-4';
+        var header = document.createElement('div');
+        header.className = 'flex items-center justify-between gap-3 flex-wrap';
+        var title = document.createElement('h3');
+        title.className = 'text-lg font-semibold text-slate-100';
+        title.textContent = 'Sugestão por Site';
+        header.appendChild(title);
+        card.appendChild(header);
+        var rows = distribution && distribution.sites ? distribution.sites : [];
+        if (!rows.length) {
+          var empty = document.createElement('div');
+          empty.className = 'text-sm text-slate-400';
+          empty.textContent = 'Sem sites suficientes para sugerir distribuição.';
+          card.appendChild(empty);
+          return card;
+        }
+        var sortedRows = sortDistributionSiteRows(rows);
+        var tableWrap = document.createElement('div');
+        tableWrap.className = 'overflow-auto';
+        var html = '';
+        html += '<table class="w-full text-sm min-w-max">';
+        html += '<thead class="text-slate-300">';
+        html += '<tr>' +
+          '<th class="px-3 py-2 text-left font-semibold">' + buildSortHeader('distributionSites', 'site', 'Site', 'left') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionSites', 'rps', 'RPS ($)', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionSites', 'coverage', 'Cobertura (%)', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionSites', 'ecpmEff', 'eCPM Efetivo ($)', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionSites', 'momentum', 'Tendência (1h)', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionSites', 'confidence', 'Confiab.', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionSites', 'currentShare', '% Atual', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionSites', 'suggestedShare', '% Sugerida', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionSites', 'deltaShare', 'Δ%', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-center font-semibold">' + buildSortHeader('distributionSites', 'mode', 'Modo', 'center') + '</th>' +
+          '<th class="px-3 py-2 text-left font-semibold">' + buildSortHeader('distributionSites', 'nextEvaluation', 'Próx. Reavaliação', 'left') + '</th>' +
+          '</tr>';
+        html += '</thead><tbody class="divide-y divide-slate-800/60">';
+        sortedRows.forEach(function (row) {
+          var selected = state.distribution.selectedSite === row.site;
+          var rowClass = selected ? 'bg-sky-900/30 text-slate-100' : '';
+          html += '<tr class="cursor-pointer ' + rowClass + '" data-site-select="' + escapeHtml(row.site) + '">';
+          html += '<td class="px-3 py-2 font-semibold text-slate-100">' + escapeHtml(row.site) + '</td>';
+          html += '<td class="px-3 py-2 text-right">' + formatCurrency(row.rps) + '</td>';
+          html += '<td class="px-3 py-2 text-right">' + formatPercent(row.coverage) + '</td>';
+          html += '<td class="px-3 py-2 text-right">' + formatCurrency(row.ecpmEff) + '</td>';
+          html += '<td class="px-3 py-2 text-right">' + formatTrend(row.momentum) + '</td>';
+          html += '<td class="px-3 py-2 text-right">' + formatPercent(row.confidence * 100) + '</td>';
+          html += '<td class="px-3 py-2 text-right">' + formatShare(row.currentShare) + '</td>';
+          html += '<td class="px-3 py-2 text-right">' + formatShare(row.suggestedShare) + '</td>';
+          html += '<td class="px-3 py-2 text-right">' + formatDeltaShare(row.deltaShare) + '</td>';
+          html += '<td class="px-3 py-2 text-center"><span class="px-2 py-1 rounded-full text-xs ' + (row.mode === 'Apostas' ? 'bg-amber-500/10 text-amber-200 border border-amber-400/40' : 'bg-sky-500/10 text-sky-200 border border-sky-400/30') + '">' + escapeHtml(row.mode) + '</span></td>';
+          html += '<td class="px-3 py-2 text-left text-slate-300">' + escapeHtml(row.nextEvaluation || '-') + '</td>';
+          html += '</tr>';
+        });
+        html += '</tbody></table>';
+        tableWrap.innerHTML = html;
+        card.appendChild(tableWrap);
+        attachSortHandlers(card);
+        tableWrap.addEventListener('click', function (ev) {
+          var target = ev.target.closest('[data-site-select]');
+          if (!target) return;
+          var site = target.getAttribute('data-site-select');
+          if (!site) return;
+          state.distribution.selectedSite = site;
+          renderAnalysis();
+        });
+        return card;
+      }
+
+      function renderDistributionGlobalUrlsCard(distribution) {
+        if (!distribution || !distribution.globalUrls) {
+          return null;
+        }
+        var summary = distribution.globalUrls;
+        var entries = (summary.entries && summary.entries.length ? summary.entries : (summary.all || [])).slice();
+        if (!entries.length) {
+          return null;
+        }
+        var card = document.createElement('div');
+        card.className = 'card rounded-2xl p-6 space-y-4';
+        var header = document.createElement('div');
+        header.className = 'flex flex-wrap items-center justify-between gap-3';
+        var title = document.createElement('h3');
+        title.className = 'text-lg font-semibold text-slate-100';
+        title.textContent = 'Resumo global por URL';
+        header.appendChild(title);
+        var infoWrap = document.createElement('div');
+        infoWrap.className = 'flex flex-wrap items-center gap-3 text-sm text-slate-300';
+        var average = document.createElement('span');
+        average.textContent = 'Média de share: ' + formatShare(summary.averageShare || 0);
+        infoWrap.appendChild(average);
+        var active = document.createElement('span');
+        var activeCount = summary.activeCount || 0;
+        var totalCount = summary.totalCount || entries.length;
+        if (summary.limitApplied && summary.targetRecipients) {
+          active.textContent = 'URLs com tráfego: ' + activeCount + ' / ' + summary.targetRecipients;
+        } else if (totalCount) {
+          active.textContent = 'URLs com tráfego: ' + activeCount + ' de ' + totalCount;
+        } else {
+          active.textContent = 'URLs com tráfego: ' + activeCount;
+        }
+        infoWrap.appendChild(active);
+        if (!summary.limitApplied && summary.targetRecipients) {
+          var targetInfo = document.createElement('span');
+          targetInfo.textContent = 'Meta de URLs: ' + summary.targetRecipients;
+          infoWrap.appendChild(targetInfo);
+        }
+        if (summary.limitApplied) {
+          var limitBadge = document.createElement('span');
+          limitBadge.className = 'inline-flex items-center gap-1 px-2 py-1 rounded-full bg-amber-500/10 text-amber-200 border border-amber-400/40 text-xs';
+          limitBadge.innerHTML = '<svg class="w-3 h-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"/></svg>Limite ativo';
+          infoWrap.appendChild(limitBadge);
+        }
+        header.appendChild(infoWrap);
+        card.appendChild(header);
+
+        var list = document.createElement('div');
+        list.className = 'space-y-2 max-h-96 overflow-auto scroll-list-15';
+        entries.forEach(function (row, index) {
+          var share = row.suggestedGlobalShare || 0;
+          var item = document.createElement('div');
+          item.className = 'p-3 rounded-xl bg-slate-900/40 border border-slate-800/70 space-y-2';
+          if (share <= 0) {
+            item.classList.add('opacity-70');
+          }
+          var topRow = document.createElement('div');
+          topRow.className = 'flex items-start justify-between gap-3';
+
+          var titleWrap = document.createElement('div');
+          titleWrap.className = 'flex flex-col gap-1';
+          var urlEl = document.createElement('div');
+          urlEl.className = 'text-sm font-semibold text-sky-300 break-all';
+          urlEl.textContent = row.url || '-';
+          titleWrap.appendChild(urlEl);
+          var siteEl = document.createElement('div');
+          siteEl.className = 'text-xs text-slate-400';
+          siteEl.textContent = 'Site: ' + (row.site || '-');
+          titleWrap.appendChild(siteEl);
+          topRow.appendChild(titleWrap);
+
+          var shareWrap = document.createElement('div');
+          shareWrap.className = 'flex flex-col items-end gap-1';
+          var rank = document.createElement('span');
+          rank.className = 'inline-flex items-center justify-center px-2 py-0.5 rounded-full bg-slate-800/70 text-xs text-slate-300 border border-slate-700/60';
+          rank.textContent = '#' + (index + 1);
+          shareWrap.appendChild(rank);
+          var shareEl = document.createElement('div');
+          shareEl.className = 'text-sm font-semibold text-slate-100';
+          shareEl.textContent = formatShare(share);
+          shareWrap.appendChild(shareEl);
+          topRow.appendChild(shareWrap);
+          item.appendChild(topRow);
+
+          var meta = document.createElement('div');
+          meta.className = 'flex flex-wrap items-center gap-2 text-xs text-slate-300';
+          meta.innerHTML = '' +
+            '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-slate-900/70 border border-slate-700/60">' +
+            '<svg class="w-3 h-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h4l3 8 4-16 3 8h4"/></svg>' + formatCurrency(row.ecpmEff || 0) + ' eCPM ef.</span>' +
+            '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-slate-900/70 border border-slate-700/60">' +
+            '<svg class="w-3 h-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h4l3 8 4-16 3 8h4"/></svg>' + formatCurrency(row.rps || 0) + ' RPS</span>' +
+            '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-slate-900/70 border border-slate-700/60">' +
+            '<svg class="w-3 h-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7h4a1 1 0 011 1v8a1 1 0 01-1 1H3m0-10V5a2 2 0 012-2h2a2 2 0 012 2v2m-6 0h6"/></svg>' + formatNumber(row.suggestedSessions || 0) + '</span>' +
+            '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-slate-900/70 border border-slate-700/60">Site ' + formatShare(row.suggestedShare || 0) + '</span>' +
+            '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-slate-900/70 border border-slate-700/60">Δ ' + formatDeltaShare(row.deltaGlobalShare || 0) + '</span>' +
+            '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-slate-900/70 border border-slate-700/60">Cov ' + formatPercent(row.coverage || 0) + '</span>';
+          if (row.guaranteed) {
+            meta.innerHTML += '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-indigo-500/15 text-indigo-200 border border-indigo-400/40">Garantido</span>';
+          }
+          if (share <= 0 || row.limited) {
+            meta.innerHTML += '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-slate-500/10 text-slate-200 border border-slate-500/30">Sem tráfego</span>';
+          }
+          if (row.status) {
+            meta.innerHTML += '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-slate-900/70 border border-slate-700/60">' + escapeHtml(row.status) + '</span>';
+          }
+          if (row.nextEval) {
+            meta.innerHTML += '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-slate-900/70 border border-slate-700/60">Próx: ' + escapeHtml(row.nextEval) + '</span>';
+          }
+          item.appendChild(meta);
+          if (row.reason) {
+            var reason = document.createElement('div');
+            reason.className = 'text-xs text-slate-400 leading-snug';
+            reason.textContent = row.reason;
+            item.appendChild(reason);
+          }
+          list.appendChild(item);
+        });
+        card.appendChild(list);
+        return card;
+      }
+
+      function renderDistributionUrlsCard(distribution) {
+        var card = document.createElement('div');
+        card.className = 'card rounded-2xl p-6 space-y-4';
+        var header = document.createElement('div');
+        header.className = 'flex items-center justify-between gap-3 flex-wrap';
+        var title = document.createElement('h3');
+        title.className = 'text-lg font-semibold text-slate-100';
+        title.textContent = 'Sugestão por URL';
+        header.appendChild(title);
+        card.appendChild(header);
+        var selectedSite = state.distribution.selectedSite;
+        if (!selectedSite) {
+          var emptySelection = document.createElement('div');
+          emptySelection.className = 'text-sm text-slate-400';
+          emptySelection.textContent = 'Selecione um site para visualizar a distribuição entre URLs.';
+          card.appendChild(emptySelection);
+          return card;
+        }
+        var siteRows = distribution && distribution.urlsBySite ? distribution.urlsBySite[selectedSite] || [] : [];
+        if (!siteRows.length) {
+          var emptyRows = document.createElement('div');
+          emptyRows.className = 'text-sm text-slate-400';
+          emptyRows.textContent = 'Sem URLs suficientes para o site selecionado.';
+          card.appendChild(emptyRows);
+          return card;
+        }
+        var searchWrapper = document.createElement('div');
+        searchWrapper.className = 'flex items-center justify-between gap-3 flex-wrap';
+        var searchLabel = document.createElement('label');
+        searchLabel.className = 'text-xs uppercase tracking-wide text-slate-400';
+        searchLabel.setAttribute('for', 'distribution-url-busca');
+        searchLabel.textContent = 'Filtrar';
+        var searchInput = document.createElement('input');
+        searchInput.id = 'distribution-url-busca';
+        searchInput.type = 'search';
+        searchInput.className = 'pill px-3 py-2 rounded-lg bg-slate-900/40 text-sm text-slate-100 w-full md:w-80';
+        searchInput.placeholder = 'Buscar por URL';
+        searchInput.value = state.distribution.urlSearch || '';
+        searchInput.addEventListener('input', function (ev) {
+          state.distribution.urlSearch = ev.target.value;
+          renderAnalysis();
+        });
+        searchWrapper.appendChild(searchLabel);
+        searchWrapper.appendChild(searchInput);
+        card.appendChild(searchWrapper);
+
+        var filteredRows = siteRows;
+        var filterValue = (state.distribution.urlSearch || '').trim().toLowerCase();
+        if (filterValue) {
+          filteredRows = siteRows.filter(function (row) {
+            return String(row.url || '').toLowerCase().indexOf(filterValue) !== -1;
+          });
+        }
+        if (!filteredRows.length) {
+          var emptyFilter = document.createElement('div');
+          emptyFilter.className = 'text-sm text-slate-400';
+          emptyFilter.textContent = 'Nenhuma URL encontrada para o filtro informado.';
+          card.appendChild(emptyFilter);
+          return card;
+        }
+        var sortedUrls = sortDistributionUrlRows(filteredRows);
+        var tableWrap = document.createElement('div');
+        tableWrap.className = 'overflow-auto scroll-list-15';
+        var html = '';
+        html += '<table class="w-full text-sm min-w-max">';
+        html += '<thead class="text-slate-300">';
+        html += '<tr>' +
+          '<th class="px-3 py-2 text-left font-semibold">' + buildSortHeader('distributionUrls', 'url', 'URL', 'left') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionUrls', 'sessions', 'Sessões (3h)', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionUrls', 'rps', 'RPS ($)', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionUrls', 'coverage', 'Cobertura (%)', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionUrls', 'ecpmEff', 'eCPM Efetivo ($)', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionUrls', 'momentum', 'Momentum', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionUrls', 'score', 'Score', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionUrls', 'currentShare', '% Atual', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionUrls', 'suggestedShare', '% Sugerida', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionUrls', 'suggestedGlobalShare', '% Global', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionUrls', 'deltaShare', 'Δ%', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-center font-semibold">' + buildSortHeader('distributionUrls', 'status', 'Status', 'center') + '</th>' +
+          '<th class="px-3 py-2 text-left font-semibold">' + buildSortHeader('distributionUrls', 'nextEval', 'Próx. avaliação', 'left') + '</th>' +
+          '</tr>';
+        html += '</thead><tbody class="divide-y divide-slate-800/60">';
+        sortedUrls.forEach(function (row) {
+          var statusLower = String(row.status || '').toLowerCase();
+          var statusClass = statusLower === 'alerta' ? 'bg-rose-500/10 text-rose-200 border border-rose-400/40' : statusLower === 'seed' ? 'bg-sky-500/10 text-sky-200 border border-sky-400/30' : 'bg-emerald-500/10 text-emerald-200 border border-emerald-400/30';
+          html += '<tr>' +
+            '<td class="px-3 py-2 text-sky-300 break-all">' + escapeHtml(row.url || '') + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatNumber(row.sessions) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatCurrency(row.rps) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatPercent(row.coverage) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatCurrency(row.ecpmEff) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatTrend(row.momentum) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatCurrency(row.score) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatShare(row.currentShare) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatShare(row.suggestedShare) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatShare(row.suggestedGlobalShare) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatDeltaShare(row.deltaShare) + '</td>' +
+            '<td class="px-3 py-2 text-center"><div class="flex items-center justify-center gap-2 flex-wrap">' +
+            '<span class="px-2 py-1 rounded-full text-xs ' + statusClass + '">' + escapeHtml(row.status || 'ok') + '</span>' +
+            (row.guaranteed ? '<span class="px-2 py-1 rounded-full text-xs bg-indigo-500/15 text-indigo-200 border border-indigo-400/40">Garantido</span>' : '') +
+            (row.limited ? '<span class="px-2 py-1 rounded-full text-xs bg-slate-500/10 text-slate-200 border border-slate-500/30">Sem tráfego</span>' : '') +
+            '</div></td>' +
+            '<td class="px-3 py-2 text-left text-slate-300">' + escapeHtml(row.nextEval || '-') + '</td>' +
+            '</tr>';
+        });
+        html += '</tbody></table>';
+        tableWrap.innerHTML = html;
+        card.appendChild(tableWrap);
+        attachSortHandlers(card);
+        return card;
+      }
+
+      function resolveDistributionSelection(distribution) {
+        if (!state.distribution) return;
+        var sites = distribution && distribution.sites ? distribution.sites : [];
+        if (!sites.length) {
+          state.distribution.selectedSite = '';
+          return;
+        }
+        var selected = state.distribution.selectedSite;
+        var exists = selected && sites.some(function (row) { return row.site === selected; });
+        if (!exists) {
+          state.distribution.selectedSite = distribution.selectedSite || sites[0].site;
+        }
+      }
+
+      function sortDistributionSiteRows(rows) {
+        var sortState = getSortState('distributionSites');
+        if (!sortState) return rows.slice();
+        var multiplier = sortState.direction === 'asc' ? 1 : -1;
+        var key = sortState.key;
+        return rows.slice().sort(function (a, b) {
+          var av = getDistributionSiteSortValue(a, key);
+          var bv = getDistributionSiteSortValue(b, key);
+          if (typeof av === 'string' || typeof bv === 'string') {
+            return String(av).localeCompare(String(bv)) * multiplier;
+          }
+          return (av - bv) * multiplier;
+        });
+      }
+
+      function getDistributionSiteSortValue(row, key) {
+        if (key === 'site') return (row.site || '').toLowerCase();
+        if (key === 'rps') return Number(row.rps || 0);
+        if (key === 'coverage') return Number(row.coverage || 0);
+        if (key === 'ecpmEff') return Number(row.ecpmEff || 0);
+        if (key === 'momentum') return Number(row.momentum || 0);
+        if (key === 'confidence') return Number(row.confidence || 0);
+        if (key === 'currentShare') return Number(row.currentShare || 0);
+        if (key === 'suggestedShare') return Number(row.suggestedShare || 0);
+        if (key === 'deltaShare') return Number(row.deltaShare || 0);
+        if (key === 'mode') return (row.mode || '').toLowerCase();
+        if (key === 'nextEvaluation') return (row.nextEvaluation || '').toLowerCase();
+        return 0;
+      }
+
+      function sortDistributionUrlRows(rows) {
+        var sortState = getSortState('distributionUrls');
+        if (!sortState) return rows.slice();
+        var multiplier = sortState.direction === 'asc' ? 1 : -1;
+        var key = sortState.key;
+        return rows.slice().sort(function (a, b) {
+          var av = getDistributionUrlSortValue(a, key);
+          var bv = getDistributionUrlSortValue(b, key);
+          if (typeof av === 'string' || typeof bv === 'string') {
+            return String(av).localeCompare(String(bv)) * multiplier;
+          }
+          return (av - bv) * multiplier;
+        });
+      }
+
+      function getDistributionUrlSortValue(row, key) {
+        if (key === 'url') return (row.url || '').toLowerCase();
+        if (key === 'sessions') return Number(row.sessions || 0);
+        if (key === 'rps') return Number(row.rps || 0);
+        if (key === 'coverage') return Number(row.coverage || 0);
+        if (key === 'ecpmEff') return Number(row.ecpmEff || 0);
+        if (key === 'momentum') return Number(row.momentum || 0);
+        if (key === 'score') return Number(row.score || 0);
+        if (key === 'currentShare') return Number(row.currentShare || 0);
+        if (key === 'suggestedShare') return Number(row.suggestedShare || 0);
+        if (key === 'suggestedGlobalShare') return Number(row.suggestedGlobalShare || 0);
+        if (key === 'deltaShare') return Number(row.deltaShare || 0);
+        if (key === 'status') return (row.status || '').toLowerCase();
+        if (key === 'nextEval') return (row.nextEval || '').toLowerCase();
+        return 0;
+      }
+
+      function updateDistributionParam(key, value) {
+        if (!state.distribution) {
+          state.distribution = { params: {}, selectedSite: '', urlSearch: '', dirty: false };
+        }
+        if (!state.distribution.params) {
+          state.distribution.params = {};
+        }
+        var current = state.distribution.params[key];
+        if (current === value) return;
+        state.distribution.params[key] = value;
+        state.distribution.dirty = true;
+      }
+
+      function getDistributionPayload() {
+        if (!state.distribution || !state.distribution.params) return null;
+        var payload = {};
+        Object.keys(state.distribution.params).forEach(function (key) {
+          var value = state.distribution.params[key];
+          if (value != null && value !== '') {
+            payload[key] = Number(value);
+          }
+        });
+        return payload;
+      }
+
+      function syncDistributionState(distribution, force) {
+        if (!state.distribution) {
+          state.distribution = { params: null, selectedSite: '', urlSearch: '', dirty: false };
+        }
+        if (distribution && distribution.controls && (force || !state.distribution.dirty)) {
+          state.distribution.params = Object.assign({}, distribution.controls);
+          state.distribution.dirty = false;
+        } else if (!state.distribution.params) {
+          state.distribution.params = {};
+        }
+        if (distribution && distribution.sites && distribution.sites.length) {
+          var selected = state.distribution.selectedSite;
+          var exists = selected && distribution.sites.some(function (row) { return row.site === selected; });
+          if (!exists) {
+            state.distribution.selectedSite = distribution.selectedSite || distribution.sites[0].site;
+          }
+        } else {
+          state.distribution.selectedSite = '';
+        }
+      }
+
+      function setAnalysisTab(tab) {
+        if (state.analysisTab === tab) return;
+        state.analysisTab = tab;
+        renderAnalysis();
+      }
+
+      function recalcularDistribuicao() {
+        if (!state.filters.operation || !state.filters.traffic) {
+          showToast('Aplique os filtros principais antes de recalcular a distribuição.', 'error');
+          return;
+        }
+        showLoading(true);
+        google.script.run
+          .withSuccessHandler(function (data) {
+            showLoading(false);
+            state.analysis = data;
+            syncDistributionState(data && data.distribution, true);
+            renderAnalysis();
+          })
+          .withFailureHandler(handleError)
+          .getDashboardData({
+            operation: state.filters.operation,
+            traffic: state.filters.traffic,
+            startDate: state.filters.startDate,
+            endDate: state.filters.endDate,
+            urlWindow: state.filters.window,
+            distribution: getDistributionPayload()
+          });
+      }
+
+      function getSortState(section) {
+        return state.sort && state.sort[section] ? state.sort[section] : null;
+      }
+
+      function setSort(section, key) {
+        if (!state.sort) state.sort = {};
+        var current = state.sort[section];
+        var direction = 'desc';
+        if (current && current.key === key) {
+          direction = current.direction === 'desc' ? 'asc' : 'desc';
+        }
+        state.sort[section] = { key: key, direction: direction };
+        renderAnalysis();
+      }
+
+      function buildSortHeader(section, key, label, alignment) {
+        var sortState = getSortState(section);
+        var indicator = '\u2195';
+        if (sortState && sortState.key === key) {
+          indicator = sortState.direction === 'asc' ? '\u25B2' : '\u25BC';
+        }
+        var justify = 'justify-start';
+        if (alignment === 'center') {
+          justify = 'justify-center';
+        } else if (alignment === 'right') {
+          justify = 'justify-end';
+        }
+        return '<button type="button" class="sort-button ' + justify + '" data-sort-section="' + section + '" data-sort-key="' + key + '">' + escapeHtml(label) + '<span class="sort-indicator">' + indicator + '</span></button>';
+      }
+
+      function attachSortHandlers(container) {
+        var buttons = container.querySelectorAll('[data-sort-section]');
+        Array.prototype.forEach.call(buttons, function (button) {
+          button.addEventListener('click', function (ev) {
+            ev.preventDefault();
+            var section = button.getAttribute('data-sort-section');
+            var key = button.getAttribute('data-sort-key');
+            setSort(section, key);
+          });
+        });
+      }
+
+      function sortSiteRows(rows) {
+        var sortState = getSortState('site');
+        if (!sortState) return rows.slice();
+        var multiplier = sortState.direction === 'asc' ? 1 : -1;
+        var key = sortState.key;
+        return rows.slice().sort(function (a, b) {
+          var av = getSiteSortValue(a, key);
+          var bv = getSiteSortValue(b, key);
+          if (typeof av === 'string' || typeof bv === 'string') {
+            return av.localeCompare(bv) * multiplier;
+          }
+          return (av - bv) * multiplier;
+        });
+      }
+
+      function getSiteSortValue(row, key) {
+        if (key === 'site') return (row.site || '').toLowerCase();
+        if (key === 'totalSessions') return Number(row.totalSessions || 0);
+        if (key === 'totalRevenue') return Number(row.totalRevenue || 0);
+        if (key === 'totalRps') return Number(row.totalRps || 0);
+        return 0;
+      }
+
+      function sortUrlRows(rows) {
+        var sortState = getSortState('url');
+        if (!sortState) return rows.slice();
+        var multiplier = sortState.direction === 'asc' ? 1 : -1;
+        var key = sortState.key;
+        return rows.slice().sort(function (a, b) {
+          var av = getUrlSortValue(a, key);
+          var bv = getUrlSortValue(b, key);
+          if (typeof av === 'string' || typeof bv === 'string') {
+            return av.localeCompare(bv) * multiplier;
+          }
+          return (av - bv) * multiplier;
+        });
+      }
+
+      function getUrlSortValue(row, key) {
+        if (key === 'url') return (row.url || '').toLowerCase();
+        if (key === 'sessions') return Number(row.sessions || 0);
+        if (key === 'revenue') return Number(row.revenue || 0);
+        if (key === 'rps') return Number(row.rps || 0);
+        if (key === 'coverage') return Number(row.coverage || 0);
+        if (key === 'ecpm') return Number(row.ecpm || 0);
+        if (key === 'effectiveEcpm') return Number(row.effectiveEcpm || 0);
+        return 0;
+      }
+
+      function renderSiteCard(siteData) {
+        var card = document.createElement('div');
+        card.className = 'card rounded-2xl p-6 space-y-4';
+        var title = document.createElement('h3');
+        title.className = 'text-lg font-semibold text-slate-100';
+        title.textContent = 'Resumo por Site (últimas horas válidas)';
+        card.appendChild(title);
+        if (!siteData.rows || !siteData.rows.length) {
+          var empty = document.createElement('div');
+          empty.className = 'text-sm text-slate-400';
+          empty.textContent = 'Sem dados de site para os filtros selecionados.';
+          card.appendChild(empty);
+          return card;
+        }
+        var hours = siteData.hours || [];
+        var hoursHeaders = hours.map(function (h) { return h.label; });
+        var rows = sortSiteRows(siteData.rows || []);
+        var table = document.createElement('div');
+        table.className = 'overflow-auto';
+        var html = '';
+        var sessionsSubHeaders = '';
+        var revenueSubHeaders = '';
+        var rpsSubHeaders = '';
+        hoursHeaders.forEach(function (h, index) {
+          var dividerClass = index === 0 ? ' metric-divider' : '';
+          sessionsSubHeaders += '<th class="px-3 py-2 font-medium text-center metric-sub metric-sub-sessions' + dividerClass + '">' + h + '</th>';
+          revenueSubHeaders += '<th class="px-3 py-2 font-medium text-center metric-sub metric-sub-revenue' + dividerClass + '">' + h + '</th>';
+          rpsSubHeaders += '<th class="px-3 py-2 font-medium text-center metric-sub metric-sub-rps' + dividerClass + '">' + h + '</th>';
+        });
+        sessionsSubHeaders += '<th class="px-3 py-2 font-semibold text-center metric-sub metric-sub-sessions metric-total metric-divider">Total</th>';
+        revenueSubHeaders += '<th class="px-3 py-2 font-semibold text-center metric-sub metric-sub-revenue metric-total metric-divider">Total</th>';
+        rpsSubHeaders += '<th class="px-3 py-2 font-semibold text-center metric-sub metric-sub-rps metric-total metric-divider">Total</th>';
+
+        html += '<table class="w-full text-sm min-w-max">';
+        html += '<thead class="text-slate-200">';
+        html += '<tr>' +
+          '<th rowspan="2" class="px-3 py-3 text-left font-semibold align-middle site-header">' + buildSortHeader('site', 'site', 'Site', 'left') + '</th>' +
+          '<th colspan="' + (hoursHeaders.length + 1) + '" class="px-3 py-2 text-center font-semibold metric-group metric-group-sessions metric-divider">' + buildSortHeader('site', 'totalSessions', 'Sessões', 'center') + '</th>' +
+          '<th colspan="' + (hoursHeaders.length + 1) + '" class="px-3 py-2 text-center font-semibold metric-group metric-group-revenue metric-divider">' + buildSortHeader('site', 'totalRevenue', 'Receita ($)', 'center') + '</th>' +
+          '<th colspan="' + (hoursHeaders.length + 1) + '" class="px-3 py-2 text-center font-semibold metric-group metric-group-rps metric-divider">' + buildSortHeader('site', 'totalRps', 'RPS ($)', 'center') + '</th>' +
+          '</tr>';
+        html += '<tr>' + sessionsSubHeaders + revenueSubHeaders + rpsSubHeaders + '</tr>';
+        html += '</thead>';
+        html += '<tbody class="divide-y divide-slate-800/60">';
+        rows.forEach(function (row) {
+          html += '<tr>';
+          html += '<td class="px-3 py-2 font-medium text-slate-100 site-cell">' + escapeHtml(row.site) + '</td>';
+          hours.forEach(function (hour, index) {
+            var classes = 'px-3 py-2 text-center metric-cell-sessions';
+            if (index === 0) classes += ' metric-divider';
+            html += '<td class="' + classes + '">' + formatNumber(row.sessions[hour.key]) + '</td>';
+          });
+          var sessionsTotalClass = 'px-3 py-2 text-center metric-cell-sessions metric-total metric-divider';
+          html += '<td class="' + sessionsTotalClass + '">' + formatNumber(row.totalSessions) + '</td>';
+          hours.forEach(function (hour, index) {
+            var classes = 'px-3 py-2 text-center metric-cell-revenue';
+            if (index === 0) classes += ' metric-divider';
+            html += '<td class="' + classes + '">' + formatCurrency(row.revenue[hour.key]) + '</td>';
+          });
+          var revenueTotalClass = 'px-3 py-2 text-center metric-cell-revenue metric-total metric-divider';
+          html += '<td class="' + revenueTotalClass + '">' + formatCurrency(row.totalRevenue) + '</td>';
+          hours.forEach(function (hour, index) {
+            var classes = 'px-3 py-2 text-center metric-cell-rps';
+            if (index === 0) classes += ' metric-divider';
+            html += '<td class="' + classes + '">' + formatCurrency(row.rps[hour.key]) + '</td>';
+          });
+          var rpsTotalClass = 'px-3 py-2 text-center metric-cell-rps metric-total metric-divider';
+          html += '<td class="' + rpsTotalClass + '">' + formatCurrency(row.totalRps) + '</td>';
+          html += '</tr>';
+        });
+        if (siteData.totals) {
+          html += '<tr class="bg-slate-900/60 text-slate-100 font-semibold">';
+          html += '<td class="px-3 py-2 site-cell metric-total">Total</td>';
+          hours.forEach(function (hour, index) {
+            var classes = 'px-3 py-2 text-center metric-cell-sessions';
+            if (index === 0) classes += ' metric-divider';
+            html += '<td class="' + classes + '">' + formatNumber(siteData.totals.sessions[hour.key]) + '</td>';
+          });
+          html += '<td class="px-3 py-2 text-center metric-cell-sessions metric-total metric-divider">' + formatNumber(siteData.totals.totalSessions) + '</td>';
+          hours.forEach(function (hour, index) {
+            var classes = 'px-3 py-2 text-center metric-cell-revenue';
+            if (index === 0) classes += ' metric-divider';
+            html += '<td class="' + classes + '">' + formatCurrency(siteData.totals.revenue[hour.key]) + '</td>';
+          });
+          html += '<td class="px-3 py-2 text-center metric-cell-revenue metric-total metric-divider">' + formatCurrency(siteData.totals.totalRevenue) + '</td>';
+          hours.forEach(function (hour, index) {
+            var classes = 'px-3 py-2 text-center metric-cell-rps';
+            if (index === 0) classes += ' metric-divider';
+            html += '<td class="' + classes + '">' + formatCurrency(siteData.totals.rps[hour.key]) + '</td>';
+          });
+          html += '<td class="px-3 py-2 text-center metric-cell-rps metric-total metric-divider">' + formatCurrency(siteData.totals.totalRps) + '</td>';
+          html += '</tr>';
+        }
+        html += '</tbody></table>';
+        table.innerHTML = html;
+        card.appendChild(table);
+        attachSortHandlers(card);
+        return card;
+      }
+
+      function renderUrlCard(urlData, filters) {
+        var card = document.createElement('div');
+        card.className = 'card rounded-2xl p-6 space-y-4';
+        var header = document.createElement('div');
+        header.className = 'flex items-center justify-between gap-3 flex-wrap';
+        var title = document.createElement('h3');
+        title.className = 'text-lg font-semibold text-slate-100';
+        title.textContent = 'Resumo por URL';
+        var info = document.createElement('span');
+        info.className = 'text-xs text-slate-400';
+        var windowMap = {
+          'day': 'Dia completo (exceto última hora)',
+          'last6h': 'Últimas 6 horas válidas',
+          'last3h': 'Últimas 3 horas válidas'
+        };
+        info.textContent = windowMap[filters && filters.window] || '';
+        header.appendChild(title);
+        header.appendChild(info);
+        card.appendChild(header);
+        var baseRows = urlData.rows || [];
+        var searchWrapper = document.createElement('div');
+        searchWrapper.className = 'flex items-center justify-between gap-3 flex-wrap';
+        var searchLabel = document.createElement('label');
+        searchLabel.setAttribute('for', 'url-busca');
+        searchLabel.className = 'text-xs uppercase tracking-wide text-slate-400';
+        searchLabel.textContent = 'Filtrar';
+        var searchInput = document.createElement('input');
+        searchInput.id = 'url-busca';
+        searchInput.type = 'search';
+        searchInput.className = 'pill px-3 py-2 rounded-lg bg-slate-900/40 text-sm text-slate-100 w-full md:w-80';
+        searchInput.placeholder = 'Buscar por URL';
+        searchInput.value = state.search.url || '';
+        searchInput.addEventListener('input', function (ev) {
+          var value = ev.target.value;
+          var caret = ev.target.selectionStart || value.length;
+          state.search.url = value;
+          renderAnalysis();
+          requestAnimationFrame(function () {
+            var input = document.getElementById('url-busca');
+            if (input) {
+              input.focus();
+              var next = Math.min(input.value.length, caret);
+              try {
+                input.setSelectionRange(next, next);
+              } catch (e) {
+                // ignore
+              }
+            }
+          });
+        });
+        searchWrapper.appendChild(searchLabel);
+        searchWrapper.appendChild(searchInput);
+        card.appendChild(searchWrapper);
+        if (!baseRows.length) {
+          var emptyBase = document.createElement('div');
+          emptyBase.className = 'text-sm text-slate-400';
+          emptyBase.textContent = 'Sem dados suficientes para a janela selecionada.';
+          card.appendChild(emptyBase);
+          return card;
+        }
+        var searchValue = (state.search.url || '').trim().toLowerCase();
+        var filteredRows = baseRows;
+        if (searchValue) {
+          filteredRows = baseRows.filter(function (row) {
+            return String(row.url || '').toLowerCase().indexOf(searchValue) !== -1;
+          });
+        }
+        if (!filteredRows.length) {
+          var emptyFilter = document.createElement('div');
+          emptyFilter.className = 'text-sm text-slate-400';
+          emptyFilter.textContent = 'Nenhuma URL encontrada para o filtro informado.';
+          card.appendChild(emptyFilter);
+          return card;
+        }
+        var rows = sortUrlRows(filteredRows || []);
+        var table = document.createElement('div');
+        table.className = 'overflow-auto scroll-list-15';
+        var html = '';
+        html += '<table class="w-full text-sm min-w-max">';
+        html += '<thead class="text-slate-300">';
+        html += '<tr>' +
+          '<th class="px-3 py-2 text-left font-semibold">' + buildSortHeader('url', 'url', 'URL', 'left') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('url', 'sessions', 'Sessões', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('url', 'revenue', 'Receita ($)', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('url', 'rps', 'RPS ($)', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('url', 'coverage', 'Cobertura (%)', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('url', 'ecpm', 'eCPM ($)', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('url', 'effectiveEcpm', 'eCPM Efetivo ($)', 'right') + '</th>' +
+          '</tr>';
+        html += '</thead><tbody class="divide-y divide-slate-800/60">';
+        rows.forEach(function (row) {
+          html += '<tr>' +
+            '<td class="px-3 py-2 text-sky-300 break-all">' + escapeHtml(row.url || '') + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatNumber(row.sessions) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatCurrency(row.revenue) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatCurrency(row.rps) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatPercent(row.coverage) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatCurrency(row.ecpm) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatCurrency(row.effectiveEcpm) + '</td>' +
+            '</tr>';
+        });
+        if (urlData.totals) {
+          html += '<tr class="bg-slate-900/60 text-slate-100 font-semibold">' +
+            '<td class="px-3 py-2">Total</td>' +
+            '<td class="px-3 py-2 text-right">' + formatNumber(urlData.totals.sessions) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatCurrency(urlData.totals.revenue) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatCurrency(urlData.totals.rps) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatPercent(urlData.totals.coverage) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatCurrency(urlData.totals.ecpm) + '</td>' +
+            '<td class="px-3 py-2 text-right">' + formatCurrency(urlData.totals.effectiveEcpm) + '</td>' +
+            '</tr>';
+        }
+        html += '</tbody></table>';
+        table.innerHTML = html;
+        card.appendChild(table);
+        attachSortHandlers(card);
+        return card;
+      }
+
+      function computeRpsValue(revenue, sessions) {
+        var rev = Number(revenue || 0);
+        var ses = Number(sessions || 0);
+        if (!ses) return 0;
+        return (rev / ses) * 1000;
+      }
+
+      function formatNumber(value) {
+        var number = Number(value || 0);
+        if (!number) return '0';
+        return number.toLocaleString('pt-BR', { maximumFractionDigits: 0 });
+      }
+
+      function formatCurrency(value) {
+        var number = Number(value || 0);
+        return '$ ' + number.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      }
+
+      function formatPercent(value) {
+        var number = Number(value || 0);
+        return number.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' %';
+      }
+
+      function formatShare(value) {
+        var number = Number(value || 0) * 100;
+        return number.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' %';
+      }
+
+      function formatDeltaShare(value) {
+        var number = Number(value || 0) * 100;
+        if (Math.abs(number) < 0.005) {
+          return '0,00 %';
+        }
+        var sign = number > 0 ? '+' : '-';
+        var formatted = Math.abs(number).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' %';
+        return sign + formatted;
+      }
+
+      function formatTrend(value) {
+        var number = Number(value || 0) * 100;
+        if (Math.abs(number) < 0.05) {
+          return '0,0 %';
+        }
+        var sign = number > 0 ? '+' : '-';
+        var formatted = Math.abs(number).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' %';
+        return sign + formatted;
+      }
+
+      function formatInputNumber(value) {
+        if (value === null || value === undefined || value === '') return '';
+        var number = Number(value);
+        if (isNaN(number)) return '';
+        return number.toFixed(2);
+      }
+
+      function escapeHtml(str) {
+        if (str == null) return '';
+        return String(str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#039;');
+      }
+
+      function showLoading(show) {
+        document.getElementById('loading-overlay').classList.toggle('hidden', !show);
+      }
+
+      function showToast(message, type) {
+        var container = document.getElementById('toast-container');
+        var toast = document.createElement('div');
+        toast.className = 'toast ' + (type === 'success' ? 'toast-success' : type === 'error' ? 'toast-error' : 'toast-info');
+        toast.textContent = message;
+        container.appendChild(toast);
+        setTimeout(function () {
+          toast.classList.add('hide');
+          setTimeout(function () { toast.remove(); }, 400);
+        }, 3000);
+      }
+
+      function handleError(error) {
+        showLoading(false);
+        showToast(error && error.message ? error.message : 'Erro ao executar ação.', 'error');
+        console.error(error);
+      }
+    })();
+  </script>
+</body>
+</html>
