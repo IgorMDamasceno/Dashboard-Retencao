@@ -114,6 +114,7 @@ function saveOperationIntegrationConfig(payload) {
   const sheet = ensureOperationIntegrationSheet_();
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   const idx = getHeaderIndexMap_(headers);
+  const slugIndex = idx.slugrota;
   var id = String(payload.id || '').trim();
   var lastRow = sheet.getLastRow();
   var range = lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues() : [];
@@ -126,13 +127,17 @@ function saveOperationIntegrationConfig(payload) {
       }
     }
   }
-  if (targetRow === -1) {
-    for (var j = 0; j < range.length; j++) {
-      if (String(range[j][idx.operacao] || '').trim() === operation) {
-        targetRow = j + 2;
-        id = String(range[j][idx.id] || '').trim() || Utilities.getUuid();
-        break;
-      }
+  var normalizedOp = operation.toLowerCase();
+  var normalizedTraffic = trafficType.toLowerCase();
+  var normalizedSlug = routeSlug.toLowerCase();
+  for (var j = 0; j < range.length; j++) {
+    var existingId = String(range[j][idx.id] || '').trim();
+    var existingOp = String(range[j][idx.operacao] || '').trim().toLowerCase();
+    var existingTraffic = String(range[j][idx.tipotrafego] || '').trim().toLowerCase();
+    var existingSlug = slugIndex == null ? '' : String(range[j][slugIndex] || '').trim().toLowerCase();
+    var isSameRecord = existingId && id && existingId === id;
+    if (!isSameRecord && existingOp === normalizedOp && existingTraffic === normalizedTraffic && existingSlug === normalizedSlug) {
+      throw new Error('Já existe uma integração para esta operação, tráfego e slug de rota.');
     }
   }
   if (!id) {
@@ -245,7 +250,26 @@ function getDashboardData(params) {
   const trafficType = String(params.traffic || '').trim();
   if (!operationName) throw new Error('Selecione a operação.');
   if (!trafficType) throw new Error('Selecione o tráfego.');
-  const integrationConfig = snapshot.operationIntegrationsByOperation[operationName] || null;
+  const requestedRouteSlug = String(params.routeSlug || '').trim();
+  const opTrafficKey = operationName + '\u0000' + trafficType;
+  const integrationCandidates = (snapshot.operationIntegrationsByOperationTraffic && snapshot.operationIntegrationsByOperationTraffic[opTrafficKey]) ? snapshot.operationIntegrationsByOperationTraffic[opTrafficKey] : [];
+  var integrationConfig = null;
+  var selectedRouteSlug = requestedRouteSlug;
+  var normalizedRequestedRoute = requestedRouteSlug.toLowerCase();
+  if (normalizedRequestedRoute) {
+    integrationConfig = integrationCandidates.filter(function (row) {
+      return String(row.routeSlug || '').trim().toLowerCase() === normalizedRequestedRoute;
+    })[0] || null;
+    if (!integrationConfig) {
+      throw new Error('Integração Link Router não encontrada para o slug informado.');
+    }
+    selectedRouteSlug = integrationConfig.routeSlug || '';
+  } else if (integrationCandidates.length === 1) {
+    integrationConfig = integrationCandidates[0];
+    selectedRouteSlug = integrationConfig.routeSlug || '';
+  } else if (integrationCandidates.length > 1) {
+    throw new Error('Mais de uma rota configurada para esta operação e tráfego. Selecione o slug desejado.');
+  }
   const operationUrls = snapshot.operationsByName[operationName];
   if (!operationUrls || !operationUrls.length) {
     throw new Error('Operação sem URLs configuradas.');
@@ -282,7 +306,7 @@ function getDashboardData(params) {
   const urlSummary = buildUrlSummary_(urlRows, snapshot.revshareMap);
   const detailed = buildDetailedAnalysis_(filteredRows, hoursInfo, snapshot.revshareMap);
 
-  var savedControls = getDistributionControlsConfig_(operationName, trafficType);
+  var savedControls = getDistributionControlsConfig_(operationName, trafficType, selectedRouteSlug);
   var distributionParams = {};
   if (savedControls) {
     Object.keys(savedControls).forEach(function (key) {
@@ -309,7 +333,7 @@ function getDashboardData(params) {
   );
 
   if (distribution && distribution.controls) {
-    saveDistributionControlsConfig_(operationName, trafficType, distribution.controls);
+    saveDistributionControlsConfig_(operationName, trafficType, selectedRouteSlug, distribution.controls);
   }
   return {
     filters: {
@@ -318,6 +342,7 @@ function getDashboardData(params) {
       startDate: startDate ? formatDateISO_(startDate) : '',
       endDate: endDate ? formatDateISO_(endDate) : '',
       window: window,
+      route: selectedRouteSlug,
       latestHour: hoursInfo.latestHourLabel,
       hours: hoursInfo.windowHours.map(function (h) { return h.label; })
     },
@@ -1945,9 +1970,31 @@ function getConfigSnapshot_() {
     };
   });
   const operationIntegrationsByOperation = {};
+  const operationIntegrationsByOperationTraffic = {};
   operationIntegrationRows.forEach(function (row) {
     if (!row.operation) return;
-    operationIntegrationsByOperation[row.operation] = row;
+    if (!operationIntegrationsByOperation[row.operation]) {
+      operationIntegrationsByOperation[row.operation] = [];
+    }
+    operationIntegrationsByOperation[row.operation].push(row);
+    var trafficKey = row.trafficType || '';
+    var opTrafficKey = row.operation + '\u0000' + trafficKey;
+    if (!operationIntegrationsByOperationTraffic[opTrafficKey]) {
+      operationIntegrationsByOperationTraffic[opTrafficKey] = [];
+    }
+    operationIntegrationsByOperationTraffic[opTrafficKey].push(row);
+  });
+  Object.keys(operationIntegrationsByOperation).forEach(function (op) {
+    operationIntegrationsByOperation[op].sort(function (a, b) {
+      var trafficCompare = String(a.trafficType || '').localeCompare(String(b.trafficType || ''), 'pt-BR');
+      if (trafficCompare !== 0) return trafficCompare;
+      return String(a.routeSlug || '').localeCompare(String(b.routeSlug || ''), 'pt-BR');
+    });
+  });
+  Object.keys(operationIntegrationsByOperationTraffic).forEach(function (key) {
+    operationIntegrationsByOperationTraffic[key].sort(function (a, b) {
+      return String(a.routeSlug || '').localeCompare(String(b.routeSlug || ''), 'pt-BR');
+    });
   });
 
   const trafficRows = trafficValues.rows.map(function (row) {
@@ -1979,6 +2026,7 @@ function getConfigSnapshot_() {
     operationRows: operationRows,
     operationIntegrationRows: operationIntegrationRows,
     operationIntegrationsByOperation: operationIntegrationsByOperation,
+    operationIntegrationsByOperationTraffic: operationIntegrationsByOperationTraffic,
     operationsByName: operationsByName,
     trafficRows: trafficRows,
     trafficByType: trafficByType,
@@ -2176,7 +2224,7 @@ function ensureDistributionConfigSheet_() {
   var ss = SpreadsheetApp.getActive();
   var sheet = ss.getSheetByName(DISTRIBUTION_CONFIG_SHEET);
   var defaults = getDefaultDistributionControls_();
-  var requiredHeaders = ['Operação', 'Tráfego'];
+  var requiredHeaders = ['Operação', 'Tráfego', 'Slug Rota'];
   Object.keys(defaults).forEach(function (key) {
     requiredHeaders.push(key);
   });
@@ -2241,7 +2289,7 @@ function ensureDistributionConfigSheet_() {
   return sheet;
 }
 
-function getDistributionControlsConfig_(operation, traffic) {
+function getDistributionControlsConfig_(operation, traffic, route) {
   if (!operation || !traffic) {
     return {};
   }
@@ -2256,19 +2304,40 @@ function getDistributionControlsConfig_(operation, traffic) {
   var idx = getHeaderIndexMap_(headers);
   var opIndex = idx.operacao;
   var trafficIndex = idx.trafego;
+  var slugIndex = idx.slugrota;
   if (opIndex == null || trafficIndex == null) {
     return {};
   }
   var targetRow = null;
+  var fallbackRow = null;
+  var normalizedRoute = String(route || '').trim().toLowerCase();
   for (var i = 1; i < values.length; i++) {
     var row = values[i];
     if (!row || row.join('').trim() === '') continue;
     var rowOp = String(row[opIndex] || '').trim();
     var rowTraffic = String(row[trafficIndex] || '').trim();
     if (rowOp && rowTraffic && rowOp.toLowerCase() === String(operation).trim().toLowerCase() && rowTraffic.toLowerCase() === String(traffic).trim().toLowerCase()) {
-      targetRow = row;
-      break;
+      var rowSlug = slugIndex == null ? '' : String(row[slugIndex] || '').trim();
+      var normalizedRowSlug = rowSlug.toLowerCase();
+      var matchesSlug;
+      if (slugIndex == null) {
+        matchesSlug = !normalizedRoute;
+      } else if (normalizedRoute) {
+        matchesSlug = normalizedRowSlug === normalizedRoute;
+      } else {
+        matchesSlug = !normalizedRowSlug;
+      }
+      if (matchesSlug) {
+        targetRow = row;
+        break;
+      }
+      if (!normalizedRoute && !fallbackRow) {
+        fallbackRow = row;
+      }
     }
+  }
+  if (!targetRow && fallbackRow) {
+    targetRow = fallbackRow;
   }
   if (!targetRow) {
     return {};
@@ -2284,7 +2353,7 @@ function getDistributionControlsConfig_(operation, traffic) {
   return controls;
 }
 
-function saveDistributionControlsConfig_(operation, traffic, controls) {
+function saveDistributionControlsConfig_(operation, traffic, route, controls) {
   if (!operation || !traffic || !controls) {
     return;
   }
@@ -2295,19 +2364,32 @@ function saveDistributionControlsConfig_(operation, traffic, controls) {
   var idx = getHeaderIndexMap_(headers);
   var opIndex = idx.operacao;
   var trafficIndex = idx.trafego;
+  var slugIndex = idx.slugrota;
   if (opIndex == null || trafficIndex == null) {
     return;
   }
   var lastRow = sheet.getLastRow();
   var rangeValues = lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, lastCol).getValues() : [];
   var rowNumber = -1;
+  var normalizedRoute = String(route || '').trim().toLowerCase();
   for (var i = 0; i < rangeValues.length; i++) {
     var row = rangeValues[i];
     var rowOp = String(row[opIndex] || '').trim();
     var rowTraffic = String(row[trafficIndex] || '').trim();
     if (rowOp && rowTraffic && rowOp.toLowerCase() === String(operation).trim().toLowerCase() && rowTraffic.toLowerCase() === String(traffic).trim().toLowerCase()) {
-      rowNumber = i + 2;
-      break;
+      var rowSlug = slugIndex == null ? '' : String(row[slugIndex] || '').trim().toLowerCase();
+      var matchesSlug;
+      if (slugIndex == null) {
+        matchesSlug = !normalizedRoute;
+      } else if (normalizedRoute) {
+        matchesSlug = rowSlug === normalizedRoute;
+      } else {
+        matchesSlug = !rowSlug;
+      }
+      if (matchesSlug) {
+        rowNumber = i + 2;
+        break;
+      }
     }
   }
   var rowValues = new Array(headers.length);
@@ -2316,6 +2398,9 @@ function saveDistributionControlsConfig_(operation, traffic, controls) {
   }
   rowValues[opIndex] = String(operation).trim();
   rowValues[trafficIndex] = String(traffic).trim();
+  if (slugIndex != null) {
+    rowValues[slugIndex] = String(route || '').trim();
+  }
   Object.keys(defaults).forEach(function (key) {
     var normalized = normalizeKey_(key);
     var columnIndex = idx[normalized];
@@ -2765,6 +2850,7 @@ function syncLinkRouterDistribution(request) {
   }
   var operation = String(request.operation || '').trim();
   var traffic = String(request.traffic || '').trim();
+  var routeSlug = String(request.routeSlug || '').trim();
   if (!operation) {
     throw new Error('Selecione a operação.');
   }
@@ -2774,6 +2860,7 @@ function syncLinkRouterDistribution(request) {
   var params = {
     operation: operation,
     traffic: traffic,
+    routeSlug: routeSlug,
     startDate: request.startDate || '',
     endDate: request.endDate || '',
     urlWindow: request.window || 'day'
@@ -2945,6 +3032,7 @@ function runLinkRouterAutoSync() {
       var result = syncLinkRouterDistribution({
         operation: integration.operation,
         traffic: trafficType,
+        routeSlug: integration.routeSlug,
         window: 'day',
         mode: 'auto'
       });

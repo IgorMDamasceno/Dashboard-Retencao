@@ -177,6 +177,12 @@
               <option value="">— selecione —</option>
             </select>
           </div>
+          <div class="lg:col-span-2">
+            <label class="block text-sm text-slate-400 mb-1">Rota (slug)</label>
+            <select id="filter-rota" class="w-full pill rounded-lg px-3 py-2 text-sm text-slate-100 bg-slate-900/40" disabled>
+              <option value="">Selecione operação e tráfego</option>
+            </select>
+          </div>
           <div>
             <label class="block text-sm text-slate-400 mb-1">Data inicial</label>
             <input id="filter-inicio" type="date" class="w-full pill rounded-lg px-3 py-2 text-sm bg-slate-900/40 text-slate-100" />
@@ -407,10 +413,12 @@
         groupedOperations: [],
         operationIntegrationOptions: [],
         operationIntegrationMap: {},
+        integrationIndex: {},
         trafficByType: {},
         filters: {
           operation: '',
           traffic: '',
+          route: '',
           startDate: '',
           endDate: '',
           window: 'day'
@@ -581,10 +589,39 @@
           integrationOptions[group.name] = true;
         });
         state.operationIntegrationMap = {};
+        state.integrationIndex = {};
         (state.config.operationIntegrations || []).forEach(function (item) {
           if (!item || !item.operation) return;
           integrationOptions[item.operation] = true;
-          state.operationIntegrationMap[item.operation] = item;
+          if (!state.operationIntegrationMap[item.operation]) {
+            state.operationIntegrationMap[item.operation] = [];
+          }
+          state.operationIntegrationMap[item.operation].push(item);
+          if (!state.integrationIndex[item.operation]) {
+            state.integrationIndex[item.operation] = {};
+          }
+          var trafficKey = item.trafficType || '';
+          if (!state.integrationIndex[item.operation][trafficKey]) {
+            state.integrationIndex[item.operation][trafficKey] = [];
+          }
+          state.integrationIndex[item.operation][trafficKey].push(item);
+        });
+        Object.keys(state.operationIntegrationMap).forEach(function (op) {
+          state.operationIntegrationMap[op].sort(function (a, b) {
+            var trafficCompare = String(a.trafficType || '').localeCompare(String(b.trafficType || ''), 'pt-BR');
+            if (trafficCompare !== 0) {
+              return trafficCompare;
+            }
+            return String(a.routeSlug || '').localeCompare(String(b.routeSlug || ''), 'pt-BR');
+          });
+        });
+        Object.keys(state.integrationIndex).forEach(function (op) {
+          var byTraffic = state.integrationIndex[op];
+          Object.keys(byTraffic).forEach(function (trafficKey) {
+            byTraffic[trafficKey].sort(function (a, b) {
+              return String(a.routeSlug || '').localeCompare(String(b.routeSlug || ''), 'pt-BR');
+            });
+          });
         });
         state.operationIntegrationOptions = Object.keys(integrationOptions).sort(function (a, b) {
           return a.localeCompare(b, 'pt-BR');
@@ -598,6 +635,74 @@
         state.trafficByType = trafficByType;
       }
 
+      function getIntegrationRoutes(operation, traffic) {
+        if (!operation || !traffic) {
+          return [];
+        }
+        var index = state.integrationIndex || {};
+        var byOperation = index[operation];
+        if (!byOperation) {
+          return [];
+        }
+        var routes = byOperation[traffic] || [];
+        return routes.slice();
+      }
+
+      function updateRouteFilter() {
+        var selectRoute = document.getElementById('filter-rota');
+        if (!selectRoute) {
+          return;
+        }
+        var operationSelect = document.getElementById('filter-operacao');
+        var trafficSelect = document.getElementById('filter-trafego');
+        var operation = operationSelect ? operationSelect.value : '';
+        var traffic = trafficSelect ? trafficSelect.value : '';
+        if (!operation || !traffic) {
+          selectRoute.innerHTML = '<option value="">Selecione operação e tráfego</option>';
+          selectRoute.value = '';
+          selectRoute.disabled = true;
+          state.filters.route = '';
+          return;
+        }
+        var routes = getIntegrationRoutes(operation, traffic);
+        var normalizedCurrent = String(state.filters.route || '').trim().toLowerCase();
+        if (!routes.length) {
+          selectRoute.innerHTML = '<option value="">Nenhuma rota configurada</option>';
+          selectRoute.value = '';
+          selectRoute.disabled = true;
+          state.filters.route = '';
+          return;
+        }
+        selectRoute.disabled = false;
+        selectRoute.innerHTML = '<option value="">— selecione —</option>';
+        routes.forEach(function (item) {
+          var option = document.createElement('option');
+          var slug = item && item.routeSlug ? item.routeSlug : '';
+          option.value = slug;
+          var parts = [];
+          parts.push(slug || '—');
+          if (item && item.domainId) {
+            parts.push('Domínio ' + item.domainId);
+          }
+          option.textContent = parts.join(' · ');
+          selectRoute.appendChild(option);
+        });
+        var selected = '';
+        if (normalizedCurrent) {
+          var match = routes.find(function (item) {
+            return String(item.routeSlug || '').trim().toLowerCase() === normalizedCurrent;
+          });
+          if (match) {
+            selected = match.routeSlug || '';
+          }
+        }
+        if (!selected && routes.length === 1) {
+          selected = routes[0].routeSlug || '';
+        }
+        selectRoute.value = selected;
+        state.filters.route = selected;
+      }
+
       function renderFilters() {
         var selectOp = document.getElementById('filter-operacao');
         var current = selectOp.value;
@@ -606,11 +711,13 @@
           var opt = document.createElement('option');
           opt.value = group.name;
           opt.textContent = group.name + ' (' + group.urls.length + ' URL' + (group.urls.length === 1 ? '' : 's') + ')';
-          selectOp.appendChild(opt);
-        });
-        if (current) selectOp.value = current;
+        selectOp.appendChild(opt);
+      });
+      if (current) selectOp.value = current;
         selectOp.onchange = function (ev) {
           state.filters.operation = ev.target.value;
+          state.filters.route = '';
+          updateRouteFilter();
         };
 
         var selectTr = document.getElementById('filter-trafego');
@@ -626,7 +733,17 @@
         if (currentTraffic) selectTr.value = currentTraffic;
         selectTr.onchange = function (ev) {
           state.filters.traffic = ev.target.value;
+          state.filters.route = '';
+          updateRouteFilter();
         };
+
+        var selectRoute = document.getElementById('filter-rota');
+        if (selectRoute) {
+          selectRoute.onchange = function (ev) {
+            state.filters.route = ev.target.value;
+          };
+        }
+        updateRouteFilter();
       }
 
       function renderConfig() {
@@ -723,7 +840,11 @@
           var slugInput = document.getElementById('operacao-integracao-slug');
           var trafficInput = document.getElementById('operacao-integracao-trafego');
           var activeInput = document.getElementById('operacao-integracao-ativo');
-          var record = operation ? map[operation] : null;
+          var records = operation ? map[operation] || [] : [];
+          var record = null;
+          if (records.length === 1) {
+            record = records[0];
+          }
           if (record) {
             if (idInput) idInput.value = record.id || '';
             if (companyInput) companyInput.value = record.companyId || '';
@@ -1139,6 +1260,8 @@
       function aplicarFiltros() {
         var operation = document.getElementById('filter-operacao').value;
         var traffic = document.getElementById('filter-trafego').value;
+        var routeSelect = document.getElementById('filter-rota');
+        var route = routeSelect ? routeSelect.value : '';
         var startDate = document.getElementById('filter-inicio').value;
         var endDate = document.getElementById('filter-fim').value;
         var window = document.getElementById('filter-janela').value;
@@ -1150,8 +1273,17 @@
           showToast('Selecione um tipo de tráfego.', 'error');
           return;
         }
+        var availableRoutes = getIntegrationRoutes(operation, traffic);
+        if (!route && availableRoutes.length === 1) {
+          route = availableRoutes[0].routeSlug || '';
+        }
+        if (!route && availableRoutes.length > 1) {
+          showToast('Selecione o slug da rota desejada.', 'error');
+          return;
+        }
         state.filters.operation = operation;
         state.filters.traffic = traffic;
+        state.filters.route = route;
         state.filters.startDate = startDate;
         state.filters.endDate = endDate;
         state.filters.window = window;
@@ -1160,6 +1292,13 @@
           .withSuccessHandler(function (data) {
             showLoading(false);
             state.analysis = data;
+            var integration = data && data.integration ? data.integration : null;
+            var selectedRoute = data && data.filters ? data.filters.route : '';
+            if (!selectedRoute && integration && integration.routeSlug) {
+              selectedRoute = integration.routeSlug;
+            }
+            state.filters.route = selectedRoute || route || '';
+            updateRouteFilter();
             syncDistributionState(data && data.distribution, true);
             renderAnalysis();
           })
@@ -1167,6 +1306,7 @@
           .getDashboardData({
             operation: operation,
             traffic: traffic,
+            routeSlug: route,
             startDate: startDate,
             endDate: endDate,
             urlWindow: window,
@@ -2877,7 +3017,29 @@
           showToast('Aplique os filtros principais antes de sincronizar com a API.', 'error');
           return;
         }
-        var integration = state.analysis && state.analysis.integration ? state.analysis.integration : null;
+        var route = state.filters.route || '';
+        var availableRoutes = getIntegrationRoutes(state.filters.operation, state.filters.traffic);
+        if (!route && availableRoutes.length === 1) {
+          route = availableRoutes[0].routeSlug || '';
+          state.filters.route = route;
+        }
+        if (!route && availableRoutes.length > 1) {
+          showToast('Selecione o slug da rota para sincronizar.', 'error');
+          return;
+        }
+        var routeRecord = null;
+        if (route) {
+          routeRecord = availableRoutes.find(function (item) {
+            return String(item.routeSlug || '').trim().toLowerCase() === String(route || '').trim().toLowerCase();
+          }) || null;
+          if (!routeRecord) {
+            showToast('Integração não encontrada para o slug selecionado.', 'error');
+            return;
+          }
+        } else if (availableRoutes.length === 1) {
+          routeRecord = availableRoutes[0];
+        }
+        var integration = routeRecord || (state.analysis && state.analysis.integration ? state.analysis.integration : null);
         if (!integration || !integration.companyId || !integration.domainId || !integration.routeSlug) {
           showToast('Configure a integração do Link Router na aba Configuração antes de sincronizar.', 'error');
           return;
@@ -2897,6 +3059,13 @@
             if (result && result.dashboard) {
               state.analysis = result.dashboard;
               syncDistributionState(result.dashboard.distribution, true);
+              var integrationResult = result.dashboard.integration;
+              var selectedRoute = result.dashboard.filters ? result.dashboard.filters.route : '';
+              if (!selectedRoute && integrationResult && integrationResult.routeSlug) {
+                selectedRoute = integrationResult.routeSlug;
+              }
+              state.filters.route = selectedRoute || route || '';
+              updateRouteFilter();
             }
             renderAnalysis();
             var successMessage = result && result.message ? result.message : 'Percentuais sincronizados com sucesso.';
@@ -2929,6 +3098,7 @@
           .syncLinkRouterDistribution({
             operation: state.filters.operation,
             traffic: state.filters.traffic,
+            routeSlug: route,
             startDate: state.filters.startDate,
             endDate: state.filters.endDate,
             window: state.filters.window,
