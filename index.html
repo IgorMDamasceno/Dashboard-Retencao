@@ -283,7 +283,7 @@
           </div>
           <div class="flex items-center gap-2 md:col-span-5">
             <input id="operacao-integracao-ativo" type="checkbox" class="w-4 h-4 rounded border-slate-600 bg-slate-900/60" />
-            <label for="operacao-integracao-ativo" class="text-sm text-slate-300">Ativar automação (atualiza porcentagens a cada 4h)</label>
+            <label for="operacao-integracao-ativo" class="text-sm text-slate-300">Ativar automação (atualiza porcentagens a cada 1h)</label>
           </div>
           <div class="md:col-span-5 flex gap-3">
             <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white font-semibold px-4 py-2 rounded-xl">Salvar</button>
@@ -2360,7 +2360,7 @@
 
           var hint = document.createElement('p');
           hint.className = 'text-xs text-slate-400';
-          hint.textContent = active ? 'Sincronização automática com o Link Router executará a cada 4h.' : 'Ative a automação para sincronizar as porcentagens a cada 4h.';
+          hint.textContent = active ? 'Sincronização automática com o Link Router executará a cada 1h.' : 'Ative a automação para sincronizar as porcentagens a cada 1h.';
           container.appendChild(hint);
         } else {
           var message = document.createElement('p');

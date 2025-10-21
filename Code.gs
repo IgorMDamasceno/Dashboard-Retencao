@@ -2991,7 +2991,7 @@ function updateLinkRouterAutoSyncTrigger_(snapshot) {
     }
     ScriptApp.newTrigger('runLinkRouterAutoSync')
       .timeBased()
-      .everyHours(4)
+      .everyHours(1)
       .create();
   } else if (triggers.length) {
     triggers.forEach(function (trigger) {
