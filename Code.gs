@@ -307,7 +307,7 @@ function getDashboardData(params) {
     distributionParams
   );
 
-  if (params.distribution && Object.keys(params.distribution).length) {
+  if (distribution && distribution.controls) {
     saveDistributionControlsConfig_(operationName, trafficType, distribution.controls);
   }
   return {
@@ -2135,15 +2135,68 @@ function ensureDistributionSheet_() {
 function ensureDistributionConfigSheet_() {
   var ss = SpreadsheetApp.getActive();
   var sheet = ss.getSheetByName(DISTRIBUTION_CONFIG_SHEET);
+  var defaults = getDefaultDistributionControls_();
+  var requiredHeaders = ['Operação', 'Tráfego'];
+  Object.keys(defaults).forEach(function (key) {
+    requiredHeaders.push(key);
+  });
+
   if (!sheet) {
     sheet = ss.insertSheet(DISTRIBUTION_CONFIG_SHEET);
+    sheet.getRange(1, 1, 1, requiredHeaders.length).setValues([requiredHeaders]);
+    sheet.setFrozenRows(1);
+    return sheet;
   }
-  var defaults = getDefaultDistributionControls_();
-  var headers = ['Operação', 'Tráfego'];
-  Object.keys(defaults).forEach(function (key) {
-    headers.push(key);
+
+  var maxColumns = sheet.getMaxColumns();
+  if (maxColumns < requiredHeaders.length) {
+    sheet.insertColumnsAfter(maxColumns, requiredHeaders.length - maxColumns);
+  }
+
+  var lastColumn = Math.max(sheet.getLastColumn(), requiredHeaders.length);
+  var headers = sheet.getRange(1, 1, 1, lastColumn).getValues()[0];
+  var hasMeaningfulHeaders = headers.some(function (value) {
+    return !!normalizeKey_(value);
   });
-  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+
+  if (!hasMeaningfulHeaders) {
+    sheet.getRange(1, 1, 1, requiredHeaders.length).setValues([requiredHeaders]);
+    sheet.setFrozenRows(1);
+    return sheet;
+  }
+
+  var normalizedExisting = {};
+  headers.forEach(function (header, index) {
+    var key = normalizeKey_(header);
+    if (key && normalizedExisting[key] == null) {
+      normalizedExisting[key] = index;
+    }
+  });
+
+  requiredHeaders.forEach(function (header) {
+    var normalized = normalizeKey_(header);
+    if (normalizedExisting.hasOwnProperty(normalized)) {
+      return;
+    }
+    var targetIndex = -1;
+    for (var i = 0; i < headers.length; i++) {
+      if (!normalizeKey_(headers[i])) {
+        targetIndex = i;
+        break;
+      }
+    }
+    if (targetIndex === -1) {
+      targetIndex = headers.length;
+      headers.push('');
+      if (sheet.getMaxColumns() < headers.length) {
+        sheet.insertColumnsAfter(sheet.getMaxColumns(), headers.length - sheet.getMaxColumns());
+      }
+    }
+    headers[targetIndex] = header;
+    sheet.getRange(1, targetIndex + 1).setValue(header);
+    normalizedExisting[normalized] = targetIndex;
+  });
+
   sheet.setFrozenRows(1);
   return sheet;
 }
