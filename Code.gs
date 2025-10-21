@@ -278,11 +278,26 @@ function getDashboardData(params) {
   if (!trafficSources.length) {
     throw new Error('Tráfego sem utm_source configurada.');
   }
-  const startDate = params.startDate ? parseDate_(params.startDate) : null;
-  const endDate = params.endDate ? parseDate_(params.endDate) : null;
+  var startDate = params.startDate ? parseDate_(params.startDate) : null;
+  var endDate = params.endDate ? parseDate_(params.endDate) : null;
   const window = params.urlWindow || 'day';
   if (startDate && endDate && startDate.getTime() > endDate.getTime()) {
     throw new Error('A data inicial não pode ser maior que a final.');
+  }
+  if (!startDate && !endDate) {
+    var today = startOfDay_(new Date());
+    startDate = today;
+    endDate = today;
+  }
+  var routeLinkInfo = null;
+  if (integrationConfig && integrationConfig.companyId && integrationConfig.domainId && integrationConfig.routeSlug) {
+    var routeResponse = fetchLinkRouterRoute_(integrationConfig.companyId, integrationConfig.domainId, integrationConfig.routeSlug);
+    if (routeResponse && routeResponse.ok && routeResponse.body && routeResponse.body.status === 'success') {
+      var routeData = routeResponse.body.data || {};
+      routeLinkInfo = buildLinkRouterUrlIndex_(routeData.links || []);
+    } else if (routeResponse) {
+      Logger.log('[Link Router] Falha ao carregar rota "' + integrationConfig.routeSlug + '": ' + formatLinkRouterError_(routeResponse));
+    }
   }
   const baseRows = loadBaseData_(operationUrls, trafficSources);
   if (!baseRows.length) {
@@ -295,6 +310,21 @@ function getDashboardData(params) {
   const hoursInfo = getHourTimeline_(filteredRows);
   if (!hoursInfo.allHours.length) {
     return buildEmptyDashboardResponse_();
+  }
+  var distributionRows = filteredRows;
+  if (routeLinkInfo && routeLinkInfo.urls && routeLinkInfo.urls.length) {
+    var routeKeySet = routeLinkInfo.keySet || {};
+    distributionRows = filteredRows.filter(function (row) {
+      var normKey = row.normUrl || '';
+      if (normKey && routeKeySet[normKey]) {
+        return true;
+      }
+      var rawKey = String(row.url || '').trim().toLowerCase();
+      if (rawKey && routeKeySet[rawKey]) {
+        return true;
+      }
+      return false;
+    });
   }
   const urlRows = filterRowsForWindow_(filteredRows, hoursInfo, window);
   const siteSummary = buildSiteSummary_(
@@ -326,7 +356,7 @@ function getDashboardData(params) {
   }
 
   const distribution = buildDistributionPlan_(
-    filteredRows,
+    distributionRows,
     hoursInfo,
     snapshot.revshareMap,
     distributionParams
@@ -3194,6 +3224,55 @@ function collectUnmatchedShares_(state) {
     }
   });
   return leftovers;
+}
+
+function buildLinkRouterUrlIndex_(links) {
+  var entries = [];
+  var seenNormalized = {};
+  var seenRaw = {};
+  (links || []).forEach(function (item) {
+    if (!item) return;
+    var raw = '';
+    if (item.link != null && item.link !== '') {
+      raw = item.link;
+    } else if (item.url != null && item.url !== '') {
+      raw = item.url;
+    }
+    raw = String(raw || '').trim();
+    if (!raw) return;
+    var normalized = normUrlStrict_(raw);
+    var rawKey = raw.toLowerCase();
+    if (normalized) {
+      if (seenNormalized[normalized]) {
+        return;
+      }
+      seenNormalized[normalized] = true;
+    } else if (rawKey) {
+      if (seenRaw[rawKey]) {
+        return;
+      }
+      seenRaw[rawKey] = true;
+    }
+    entries.push({
+      url: raw,
+      normalized: normalized,
+      rawKey: rawKey,
+      key: normalized || rawKey
+    });
+  });
+  var keySet = {};
+  entries.forEach(function (entry) {
+    if (entry.normalized) {
+      keySet[entry.normalized] = true;
+    }
+    if (entry.rawKey) {
+      keySet[entry.rawKey] = true;
+    }
+  });
+  return {
+    urls: entries,
+    keySet: keySet
+  };
 }
 
 function fetchLinkRouterRoute_(companyId, domainId, slug) {

@@ -167,21 +167,30 @@
         <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
           <div class="lg:col-span-2">
             <label class="block text-sm text-slate-400 mb-1">Operação <span class="text-red-400">*</span></label>
-            <select id="filter-operacao" class="w-full pill rounded-lg px-3 py-2 text-sm text-slate-100 bg-slate-900/40">
-              <option value="">— selecione —</option>
-            </select>
+            <div class="space-y-2">
+              <input id="filter-operacao-busca" type="search" class="w-full pill rounded-lg px-3 py-2 text-sm text-slate-100 bg-slate-900/40" placeholder="Buscar operação" />
+              <select id="filter-operacao" class="w-full pill rounded-lg px-3 py-2 text-sm text-slate-100 bg-slate-900/40">
+                <option value="">— selecione —</option>
+              </select>
+            </div>
           </div>
           <div class="lg:col-span-2">
             <label class="block text-sm text-slate-400 mb-1">Tráfego <span class="text-red-400">*</span></label>
-            <select id="filter-trafego" class="w-full pill rounded-lg px-3 py-2 text-sm text-slate-100 bg-slate-900/40">
-              <option value="">— selecione —</option>
-            </select>
+            <div class="space-y-2">
+              <input id="filter-trafego-busca" type="search" class="w-full pill rounded-lg px-3 py-2 text-sm text-slate-100 bg-slate-900/40" placeholder="Buscar tráfego" />
+              <select id="filter-trafego" class="w-full pill rounded-lg px-3 py-2 text-sm text-slate-100 bg-slate-900/40">
+                <option value="">— selecione —</option>
+              </select>
+            </div>
           </div>
           <div class="lg:col-span-2">
             <label class="block text-sm text-slate-400 mb-1">Rota (slug)</label>
-            <select id="filter-rota" class="w-full pill rounded-lg px-3 py-2 text-sm text-slate-100 bg-slate-900/40" disabled>
-              <option value="">Selecione operação e tráfego</option>
-            </select>
+            <div class="space-y-2">
+              <input id="filter-rota-busca" type="search" class="w-full pill rounded-lg px-3 py-2 text-sm text-slate-100 bg-slate-900/40" placeholder="Buscar rota" disabled />
+              <select id="filter-rota" class="w-full pill rounded-lg px-3 py-2 text-sm text-slate-100 bg-slate-900/40" disabled>
+                <option value="">Selecione operação e tráfego</option>
+              </select>
+            </div>
           </div>
           <div>
             <label class="block text-sm text-slate-400 mb-1">Data inicial</label>
@@ -441,7 +450,8 @@
           params: null,
           selectedSite: '',
           urlSearch: '',
-          dirty: false
+          dirty: false,
+          contextKey: ''
         },
         detailed: {
           mode: 'url',
@@ -456,11 +466,73 @@
         syncingLinkRouter: false
       };
 
+      function makeDistributionContextKey(operation, traffic, route) {
+        var op = String(operation || '').trim().toLowerCase();
+        var tr = String(traffic || '').trim().toLowerCase();
+        var rt = String(route || '').trim().toLowerCase();
+        return [op, tr, rt].join('||');
+      }
+
+      function filterSelectOptions(select, query) {
+        if (!select) return;
+        var normalized = String(query || '').trim().toLowerCase();
+        Array.from(select.options || []).forEach(function (option, index) {
+          if (!option) return;
+          if (index === 0) {
+            option.hidden = false;
+            return;
+          }
+          var text = String(option.textContent || option.label || option.value || '').trim().toLowerCase();
+          option.hidden = normalized && text.indexOf(normalized) === -1;
+        });
+      }
+
+      function attachSelectSearch(selectId, inputId) {
+        var select = document.getElementById(selectId);
+        var input = document.getElementById(inputId);
+        if (!select || !input) return;
+        if (input.dataset.searchAttached === '1') return;
+        input.dataset.searchAttached = '1';
+        input.addEventListener('input', function () {
+          filterSelectOptions(select, input.value);
+        });
+        input.addEventListener('keydown', function (ev) {
+          if (ev.key === 'Enter') {
+            ev.preventDefault();
+            var options = Array.from(select.options || []).filter(function (option, index) {
+              if (!option || option.hidden) return false;
+              if (index === 0 && !option.value) return false;
+              return true;
+            });
+            if (options.length) {
+              select.value = options[0].value;
+              select.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+          }
+        });
+      }
+
+      function resetSelectSearch(selectId, inputId) {
+        var select = document.getElementById(selectId);
+        var input = document.getElementById(inputId);
+        if (input) {
+          input.value = '';
+        }
+        if (select) {
+          Array.from(select.options || []).forEach(function (option) {
+            if (option) option.hidden = false;
+          });
+        }
+      }
+
       document.addEventListener('DOMContentLoaded', function () {
         bindTabs();
         bindFilters();
         bindForms();
         bindSearchInputs();
+        attachSelectSearch('filter-operacao', 'filter-operacao-busca');
+        attachSelectSearch('filter-trafego', 'filter-trafego-busca');
+        attachSelectSearch('filter-rota', 'filter-rota-busca');
         loadConfig();
       });
 
@@ -650,6 +722,7 @@
 
       function updateRouteFilter() {
         var selectRoute = document.getElementById('filter-rota');
+        var routeSearch = document.getElementById('filter-rota-busca');
         if (!selectRoute) {
           return;
         }
@@ -661,6 +734,10 @@
           selectRoute.innerHTML = '<option value="">Selecione operação e tráfego</option>';
           selectRoute.value = '';
           selectRoute.disabled = true;
+          if (routeSearch) {
+            routeSearch.value = '';
+            routeSearch.disabled = true;
+          }
           state.filters.route = '';
           return;
         }
@@ -670,10 +747,17 @@
           selectRoute.innerHTML = '<option value="">Nenhuma rota configurada</option>';
           selectRoute.value = '';
           selectRoute.disabled = true;
+          if (routeSearch) {
+            routeSearch.value = '';
+            routeSearch.disabled = true;
+          }
           state.filters.route = '';
           return;
         }
         selectRoute.disabled = false;
+        if (routeSearch) {
+          routeSearch.disabled = false;
+        }
         selectRoute.innerHTML = '<option value="">— selecione —</option>';
         routes.forEach(function (item) {
           var option = document.createElement('option');
@@ -700,6 +784,7 @@
           selected = routes[0].routeSlug || '';
         }
         selectRoute.value = selected;
+        resetSelectSearch('filter-rota', 'filter-rota-busca');
         state.filters.route = selected;
       }
 
@@ -711,9 +796,10 @@
           var opt = document.createElement('option');
           opt.value = group.name;
           opt.textContent = group.name + ' (' + group.urls.length + ' URL' + (group.urls.length === 1 ? '' : 's') + ')';
-        selectOp.appendChild(opt);
-      });
-      if (current) selectOp.value = current;
+          selectOp.appendChild(opt);
+        });
+        if (current) selectOp.value = current;
+        resetSelectSearch('filter-operacao', 'filter-operacao-busca');
         selectOp.onchange = function (ev) {
           state.filters.operation = ev.target.value;
           state.filters.route = '';
@@ -731,6 +817,7 @@
           selectTr.appendChild(opt);
         });
         if (currentTraffic) selectTr.value = currentTraffic;
+        resetSelectSearch('filter-trafego', 'filter-trafego-busca');
         selectTr.onchange = function (ev) {
           state.filters.traffic = ev.target.value;
           state.filters.route = '';
@@ -1299,7 +1386,23 @@
             }
             state.filters.route = selectedRoute || route || '';
             updateRouteFilter();
-            syncDistributionState(data && data.distribution, true);
+            var responseFilters = data && data.filters ? data.filters : {};
+            state.filters.startDate = responseFilters.startDate || '';
+            state.filters.endDate = responseFilters.endDate || '';
+            var startInput = document.getElementById('filter-inicio');
+            if (startInput) {
+              startInput.value = responseFilters.startDate || '';
+            }
+            var endInput = document.getElementById('filter-fim');
+            if (endInput) {
+              endInput.value = responseFilters.endDate || '';
+            }
+            var contextKey = makeDistributionContextKey(
+              responseFilters.operation || state.filters.operation,
+              responseFilters.traffic || state.filters.traffic,
+              responseFilters.route || state.filters.route
+            );
+            syncDistributionState(data && data.distribution, true, contextKey);
             renderAnalysis();
           })
           .withFailureHandler(handleError)
@@ -2948,6 +3051,10 @@
 
       function getDistributionPayload() {
         if (!state.distribution || !state.distribution.params) return null;
+        var currentKey = makeDistributionContextKey(state.filters.operation, state.filters.traffic, state.filters.route);
+        if (!state.distribution.contextKey || state.distribution.contextKey !== currentKey) {
+          return null;
+        }
         var payload = {};
         Object.keys(state.distribution.params).forEach(function (key) {
           var value = state.distribution.params[key];
@@ -2958,15 +3065,18 @@
         return payload;
       }
 
-      function syncDistributionState(distribution, force) {
+      function syncDistributionState(distribution, force, contextKey) {
         if (!state.distribution) {
-          state.distribution = { params: null, selectedSite: '', urlSearch: '', dirty: false };
+          state.distribution = { params: null, selectedSite: '', urlSearch: '', dirty: false, contextKey: '' };
         }
         if (distribution && distribution.controls && (force || !state.distribution.dirty)) {
           state.distribution.params = Object.assign({}, distribution.controls);
           state.distribution.dirty = false;
         } else if (!state.distribution.params) {
           state.distribution.params = {};
+        }
+        if (typeof contextKey !== 'undefined') {
+          state.distribution.contextKey = contextKey || '';
         }
         if (distribution && distribution.sites && distribution.sites.length) {
           var selected = state.distribution.selectedSite;
@@ -2995,13 +3105,30 @@
           .withSuccessHandler(function (data) {
             showLoading(false);
             state.analysis = data;
-            syncDistributionState(data && data.distribution, true);
+            var responseFilters = data && data.filters ? data.filters : {};
+            state.filters.startDate = responseFilters.startDate || '';
+            state.filters.endDate = responseFilters.endDate || '';
+            var startInput = document.getElementById('filter-inicio');
+            if (startInput) {
+              startInput.value = responseFilters.startDate || '';
+            }
+            var endInput = document.getElementById('filter-fim');
+            if (endInput) {
+              endInput.value = responseFilters.endDate || '';
+            }
+            var contextKey = makeDistributionContextKey(
+              responseFilters.operation || state.filters.operation,
+              responseFilters.traffic || state.filters.traffic,
+              responseFilters.route || state.filters.route
+            );
+            syncDistributionState(data && data.distribution, true, contextKey);
             renderAnalysis();
           })
           .withFailureHandler(handleError)
           .getDashboardData({
             operation: state.filters.operation,
             traffic: state.filters.traffic,
+            routeSlug: state.filters.route,
             startDate: state.filters.startDate,
             endDate: state.filters.endDate,
             urlWindow: state.filters.window,
@@ -3058,7 +3185,23 @@
             showLoading(false);
             if (result && result.dashboard) {
               state.analysis = result.dashboard;
-              syncDistributionState(result.dashboard.distribution, true);
+              var dashFilters = result.dashboard && result.dashboard.filters ? result.dashboard.filters : {};
+              state.filters.startDate = dashFilters.startDate || '';
+              state.filters.endDate = dashFilters.endDate || '';
+              var startInput = document.getElementById('filter-inicio');
+              if (startInput) {
+                startInput.value = dashFilters.startDate || '';
+              }
+              var endInput = document.getElementById('filter-fim');
+              if (endInput) {
+                endInput.value = dashFilters.endDate || '';
+              }
+              var contextKey = makeDistributionContextKey(
+                dashFilters.operation || state.filters.operation,
+                dashFilters.traffic || state.filters.traffic,
+                dashFilters.route || state.filters.route
+              );
+              syncDistributionState(result.dashboard.distribution, true, contextKey);
               var integrationResult = result.dashboard.integration;
               var selectedRoute = result.dashboard.filters ? result.dashboard.filters.route : '';
               if (!selectedRoute && integrationResult && integrationResult.routeSlug) {
