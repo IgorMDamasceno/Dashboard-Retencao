@@ -99,6 +99,10 @@ function saveOperationIntegrationConfig(payload) {
   if (!operation) {
     throw new Error('Selecione a operação.');
   }
+  var trafficType = String(payload.trafficType || '').trim();
+  if (!trafficType || TRAFFIC_TYPES.indexOf(trafficType) === -1) {
+    throw new Error('Selecione o tipo de tráfego.');
+  }
   var companyId = String(payload.companyId || '').trim();
   var domainId = String(payload.domainId || '').trim();
   var routeSlug = String(payload.routeSlug || '').trim();
@@ -134,7 +138,7 @@ function saveOperationIntegrationConfig(payload) {
     id = Utilities.getUuid();
   }
   var statusValue = active ? 'Ativo' : 'Inativo';
-  var rowValues = [id, operation, companyId, domainId, routeSlug, statusValue];
+  var rowValues = [id, operation, trafficType, companyId, domainId, routeSlug, statusValue];
   if (targetRow > -1) {
     sheet.getRange(targetRow, 1, 1, rowValues.length).setValues([rowValues]);
   } else {
@@ -323,6 +327,7 @@ function getDashboardData(params) {
     integration: integrationConfig ? {
       id: integrationConfig.id || '',
       operation: integrationConfig.operation || '',
+      trafficType: integrationConfig.trafficType || '',
       companyId: integrationConfig.companyId || '',
       domainId: integrationConfig.domainId || '',
       routeSlug: integrationConfig.routeSlug || '',
@@ -1892,6 +1897,7 @@ function getConfigSnapshot_() {
     return {
       id: row.id,
       operation: row.operacao,
+      trafficType: row.tipotrafego,
       companyId: row.empresaid,
       domainId: row.dominioid,
       routeSlug: row.slugrota,
@@ -1959,6 +1965,7 @@ function getSheetValues_(sheet) {
       operacao: pickValue_(rowValues, idx, 'operacao'),
       url: pickValue_(rowValues, idx, 'url'),
       observacao: pickValue_(rowValues, idx, 'observacao'),
+      tipotrafego: pickValue_(rowValues, idx, 'tipotrafego'),
       tipo: pickValue_(rowValues, idx, 'tipo'),
       utm_source: pickValue_(rowValues, idx, 'utmsource'),
       site: pickValue_(rowValues, idx, 'site'),
@@ -2046,8 +2053,33 @@ function ensureOperationIntegrationSheet_() {
   if (!sheet) {
     sheet = ss.insertSheet(OPERATION_INTEGRATION_SHEET);
   }
-  var headers = ['ID', 'Operação', 'Empresa ID', 'Domínio ID', 'Slug Rota', 'Ativo?'];
+  var headers = ['ID', 'Operação', 'Tipo Tráfego', 'Empresa ID', 'Domínio ID', 'Slug Rota', 'Ativo?'];
   sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  var lastRow = sheet.getLastRow();
+  if (lastRow > 1) {
+    var dataRange = sheet.getRange(2, 1, lastRow - 1, headers.length);
+    var values = dataRange.getValues();
+    var needsMigration = values.some(function (row) {
+      var status = String(row[5] || '').toLowerCase();
+      var hasStatus = status === 'ativo' || status === 'inativo';
+      return hasStatus && (row[6] === '' || row[6] == null);
+    });
+    if (needsMigration) {
+      var migrated = values.map(function (row) {
+        var status = row[5];
+        return [
+          row[0],
+          row[1],
+          '',
+          row[2],
+          row[3],
+          row[4],
+          status
+        ];
+      });
+      dataRange.setValues(migrated);
+    }
+  }
   sheet.setFrozenRows(1);
   return sheet;
 }
@@ -2662,6 +2694,12 @@ function syncLinkRouterDistribution(request) {
   if (!integration || !integration.companyId || !integration.domainId || !integration.routeSlug) {
     throw new Error('Integração Link Router não configurada para a operação selecionada.');
   }
+  if (!integration.trafficType) {
+    throw new Error('Integração sem tipo de tráfego vinculado. Atualize a configuração.');
+  }
+  if (integration.trafficType && integration.trafficType !== traffic) {
+    throw new Error('Integração configurada para o tráfego "' + integration.trafficType + '", selecione o tipo correspondente.');
+  }
 
   var distribution = dashboard && dashboard.distribution ? dashboard.distribution : null;
   if (!distribution || !distribution.globalUrls || !distribution.globalUrls.all || !distribution.globalUrls.all.length) {
@@ -2791,41 +2829,47 @@ function parseLinkRouterId_(value) {
 function runLinkRouterAutoSync() {
   var snapshot = getConfigSnapshot_();
   var integrations = (snapshot.operationIntegrationRows || []).filter(function (row) {
-    return row && row.active && row.operation && row.companyId && row.domainId && row.routeSlug;
+    return row && row.active && row.operation && row.companyId && row.domainId && row.routeSlug && row.trafficType;
   });
   var trafficByType = snapshot.trafficByType || {};
   var successes = [];
   var failures = [];
 
   integrations.forEach(function (integration) {
-    TRAFFIC_TYPES.forEach(function (trafficType) {
-      var sources = trafficByType[trafficType] || [];
-      if (!sources.length) {
-        return;
-      }
-      try {
-        var result = syncLinkRouterDistribution({
-          operation: integration.operation,
-          traffic: trafficType,
-          window: 'day',
-          mode: 'auto'
-        });
-        successes.push({
-          operation: integration.operation,
-          traffic: trafficType,
-          linksUpdated: result && result.linksUpdated ? result.linksUpdated : 0,
-          unmatchedLinks: result && result.unmatchedLinks ? result.unmatchedLinks.length : 0,
-          leftoverShares: result && result.leftoverShares ? result.leftoverShares.length : 0
-        });
-      } catch (err) {
-        failures.push({
-          operation: integration.operation,
-          traffic: trafficType,
-          message: err && err.message ? err.message : String(err)
-        });
-        logLinkRouterAutoSyncFailure_(integration, trafficType, err);
-      }
-    });
+    var trafficType = integration.trafficType;
+    var sources = trafficByType[trafficType] || [];
+    if (!sources.length) {
+      var error = new Error('Nenhuma utm_source configurada para o tráfego vinculado.');
+      failures.push({
+        operation: integration.operation,
+        traffic: trafficType,
+        message: error.message
+      });
+      logLinkRouterAutoSyncFailure_(integration, trafficType, error);
+      return;
+    }
+    try {
+      var result = syncLinkRouterDistribution({
+        operation: integration.operation,
+        traffic: trafficType,
+        window: 'day',
+        mode: 'auto'
+      });
+      successes.push({
+        operation: integration.operation,
+        traffic: trafficType,
+        linksUpdated: result && result.linksUpdated ? result.linksUpdated : 0,
+        unmatchedLinks: result && result.unmatchedLinks ? result.unmatchedLinks.length : 0,
+        leftoverShares: result && result.leftoverShares ? result.leftoverShares.length : 0
+      });
+    } catch (err) {
+      failures.push({
+        operation: integration.operation,
+        traffic: trafficType,
+        message: err && err.message ? err.message : String(err)
+      });
+      logLinkRouterAutoSyncFailure_(integration, trafficType, err);
+    }
   });
 
   updateLinkRouterAutoSyncTrigger_(snapshot);
@@ -2840,7 +2884,7 @@ function runLinkRouterAutoSync() {
 function updateLinkRouterAutoSyncTrigger_(snapshot) {
   snapshot = snapshot || getConfigSnapshot_();
   var hasActiveIntegration = (snapshot.operationIntegrationRows || []).some(function (row) {
-    return row && row.active && row.operation && row.companyId && row.domainId && row.routeSlug;
+    return row && row.active && row.operation && row.companyId && row.domainId && row.routeSlug && row.trafficType;
   });
   var triggers = ScriptApp.getProjectTriggers().filter(function (trigger) {
     return trigger.getHandlerFunction && trigger.getHandlerFunction() === 'runLinkRouterAutoSync';

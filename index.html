@@ -113,6 +113,16 @@
       overflow-x: auto;
       overscroll-behavior: contain;
     }
+    .table-head-sticky {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: rgba(15, 23, 42, 0.92);
+      backdrop-filter: blur(8px);
+    }
+    .table-head-sticky th {
+      background: inherit;
+    }
   </style>
 </head>
 <body class="text-slate-200">
@@ -261,11 +271,17 @@
             <label class="block text-sm text-slate-400 mb-1">Domínio ID</label>
             <input id="operacao-integracao-dominio" class="w-full pill rounded-lg px-3 py-2 bg-slate-900/40 text-slate-100" placeholder="Ex: 456" />
           </div>
+          <div>
+            <label class="block text-sm text-slate-400 mb-1">Tipo de tráfego</label>
+            <select id="operacao-integracao-trafego" class="w-full pill rounded-lg px-3 py-2 bg-slate-900/40 text-slate-100">
+              <option value="">— selecione —</option>
+            </select>
+          </div>
           <div class="md:col-span-2">
             <label class="block text-sm text-slate-400 mb-1">Slug da rota</label>
             <input id="operacao-integracao-slug" class="w-full pill rounded-lg px-3 py-2 bg-slate-900/40 text-slate-100" placeholder="Ex: ofertas-retencao" />
           </div>
-          <div class="flex items-center gap-2 md:col-span-3">
+          <div class="flex items-center gap-2 md:col-span-5">
             <input id="operacao-integracao-ativo" type="checkbox" class="w-4 h-4 rounded border-slate-600 bg-slate-900/60" />
             <label for="operacao-integracao-ativo" class="text-sm text-slate-300">Ativar automação (atualiza porcentagens a cada 4h)</label>
           </div>
@@ -283,6 +299,7 @@
             <thead class="text-slate-400 text-left">
               <tr>
                 <th class="py-2 px-2 font-semibold">Operação</th>
+                <th class="py-2 px-2 font-semibold">Tipo de tráfego</th>
                 <th class="py-2 px-2 font-semibold">Empresa ID</th>
                 <th class="py-2 px-2 font-semibold">Domínio ID</th>
                 <th class="py-2 px-2 font-semibold">Slug rota</th>
@@ -704,6 +721,7 @@
           var companyInput = document.getElementById('operacao-integracao-empresa');
           var domainInput = document.getElementById('operacao-integracao-dominio');
           var slugInput = document.getElementById('operacao-integracao-slug');
+          var trafficInput = document.getElementById('operacao-integracao-trafego');
           var activeInput = document.getElementById('operacao-integracao-ativo');
           var record = operation ? map[operation] : null;
           if (record) {
@@ -711,12 +729,14 @@
             if (companyInput) companyInput.value = record.companyId || '';
             if (domainInput) domainInput.value = record.domainId || '';
             if (slugInput) slugInput.value = record.routeSlug || '';
+            if (trafficInput) trafficInput.value = record.trafficType || '';
             if (activeInput) activeInput.checked = !!record.active;
           } else {
             if (idInput) idInput.value = '';
             if (companyInput) companyInput.value = '';
             if (domainInput) domainInput.value = '';
             if (slugInput) slugInput.value = '';
+            if (trafficInput) trafficInput.value = '';
             if (activeInput) activeInput.checked = false;
           }
         };
@@ -748,6 +768,26 @@
           }
           attachOperacaoIntegracaoSelectHandler(select);
         }
+        var trafficSelect = document.getElementById('operacao-integracao-trafego');
+        if (trafficSelect) {
+          var currentTraffic = trafficSelect.value;
+          trafficSelect.innerHTML = '';
+          var trafficPlaceholder = document.createElement('option');
+          trafficPlaceholder.value = '';
+          trafficPlaceholder.textContent = '— selecione —';
+          trafficSelect.appendChild(trafficPlaceholder);
+          (state.config.trafficTypes || []).forEach(function (type) {
+            var opt = document.createElement('option');
+            opt.value = type;
+            opt.textContent = type;
+            trafficSelect.appendChild(opt);
+          });
+          if (currentTraffic && state.config.trafficTypes && state.config.trafficTypes.indexOf(currentTraffic) !== -1) {
+            trafficSelect.value = currentTraffic;
+          } else {
+            trafficSelect.value = '';
+          }
+        }
         tbody.innerHTML = '';
         var searchValue = (state.search.operationIntegrations || '').trim().toLowerCase();
         var input = document.getElementById('operacao-integracao-busca');
@@ -756,18 +796,18 @@
         }
         var items = (state.config.operationIntegrations || []).slice();
         if (!items.length) {
-          tbody.innerHTML = '<tr><td colspan="6" class="px-2 py-3 text-center text-slate-400">Nenhuma operação integrada.</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="7" class="px-2 py-3 text-center text-slate-400">Nenhuma operação integrada.</td></tr>';
           return;
         }
         if (searchValue) {
           items = items.filter(function (item) {
-            return ['operation', 'companyId', 'domainId', 'routeSlug'].some(function (key) {
+            return ['operation', 'trafficType', 'companyId', 'domainId', 'routeSlug'].some(function (key) {
               return String(item[key] || '').toLowerCase().indexOf(searchValue) !== -1;
             }) || (item.active ? 'ativo' : 'inativo').indexOf(searchValue) !== -1;
           });
         }
         if (!items.length) {
-          tbody.innerHTML = '<tr><td colspan="6" class="px-2 py-3 text-center text-slate-400">Nenhum resultado para o filtro informado.</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="7" class="px-2 py-3 text-center text-slate-400">Nenhum resultado para o filtro informado.</td></tr>';
           return;
         }
         items.sort(function (a, b) {
@@ -778,6 +818,7 @@
           var tr = document.createElement('tr');
           tr.innerHTML = [
             '<td class="px-2 py-2 align-top">' + escapeHtml(item.operation || '') + '</td>',
+            '<td class="px-2 py-2 align-top text-slate-300">' + escapeHtml(item.trafficType || '—') + '</td>',
             '<td class="px-2 py-2 align-top text-slate-300">' + escapeHtml(item.companyId || '') + '</td>',
             '<td class="px-2 py-2 align-top text-slate-300">' + escapeHtml(item.domainId || '') + '</td>',
             '<td class="px-2 py-2 align-top text-sky-300 break-all">' + escapeHtml(item.routeSlug || '') + '</td>',
@@ -798,6 +839,7 @@
             document.getElementById('operacao-integracao-operacao').value = found.operation || '';
             document.getElementById('operacao-integracao-empresa').value = found.companyId || '';
             document.getElementById('operacao-integracao-dominio').value = found.domainId || '';
+            document.getElementById('operacao-integracao-trafego').value = found.trafficType || '';
             document.getElementById('operacao-integracao-slug').value = found.routeSlug || '';
             document.getElementById('operacao-integracao-ativo').checked = !!found.active;
           });
@@ -1004,6 +1046,7 @@
         var payload = {
           id: document.getElementById('operacao-integracao-id').value,
           operation: document.getElementById('operacao-integracao-operacao').value,
+          trafficType: document.getElementById('operacao-integracao-trafego').value,
           companyId: document.getElementById('operacao-integracao-empresa').value,
           domainId: document.getElementById('operacao-integracao-dominio').value,
           routeSlug: document.getElementById('operacao-integracao-slug').value,
@@ -1011,6 +1054,10 @@
         };
         if (!payload.operation) {
           showToast('Selecione a operação.', 'error');
+          return;
+        }
+        if (!payload.trafficType) {
+          showToast('Selecione o tipo de tráfego.', 'error');
           return;
         }
         if (payload.active && (!payload.companyId || !payload.domainId || !payload.routeSlug)) {
@@ -1076,6 +1123,10 @@
         }
         document.getElementById('operacao-integracao-empresa').value = '';
         document.getElementById('operacao-integracao-dominio').value = '';
+        var trafficSelect = document.getElementById('operacao-integracao-trafego');
+        if (trafficSelect) {
+          trafficSelect.value = '';
+        }
         document.getElementById('operacao-integracao-slug').value = '';
         document.getElementById('operacao-integracao-ativo').checked = false;
       }
@@ -1289,6 +1340,9 @@
         if (!integration) return 'Integração não configurada';
         var infoParts = [];
         infoParts.push(integration.active ? 'Automação ativa' : 'Automação inativa');
+        if (integration.trafficType) {
+          infoParts.push('Tráfego ' + integration.trafficType);
+        }
         if (integration.companyId) {
           infoParts.push('Empresa ' + integration.companyId);
         }
@@ -2341,7 +2395,7 @@
         tableWrap.className = 'overflow-auto';
         var html = '';
         html += '<table class="w-full text-sm min-w-max">';
-        html += '<thead class="text-slate-300">';
+        html += '<thead class="text-slate-300 table-head-sticky">';
         html += '<tr>' +
           '<th class="px-3 py-2 text-left font-semibold">' + buildSortHeader('distributionSites', 'site', 'Site', 'left') + '</th>' +
           '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionSites', 'rps', 'RPS ($)', 'right') + '</th>' +
@@ -2613,7 +2667,7 @@
         tableWrap.className = 'overflow-auto scroll-list-15';
         var html = '';
         html += '<table class="w-full text-sm min-w-max">';
-        html += '<thead class="text-slate-300">';
+        html += '<thead class="text-slate-300 table-head-sticky">';
         html += '<tr>' +
           '<th class="px-3 py-2 text-left font-semibold">' + buildSortHeader('distributionUrls', 'url', 'URL', 'left') + '</th>' +
           '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionUrls', 'sessions', 'Sessões (3h)', 'right') + '</th>' +
@@ -3149,10 +3203,10 @@
         }
         var rows = sortUrlRows(filteredRows || []);
         var table = document.createElement('div');
-        table.className = 'overflow-auto scroll-list-15';
+        table.className = 'relative overflow-auto scroll-list-15';
         var html = '';
         html += '<table class="w-full text-sm min-w-max">';
-        html += '<thead class="text-slate-300">';
+        html += '<thead class="text-slate-300 table-head-sticky">';
         html += '<tr>' +
           '<th class="px-3 py-2 text-left font-semibold">' + buildSortHeader('url', 'url', 'URL', 'left') + '</th>' +
           '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('url', 'sessions', 'Sessões', 'right') + '</th>' +
