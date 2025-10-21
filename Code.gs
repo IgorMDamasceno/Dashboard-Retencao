@@ -10,6 +10,7 @@ const TRAFFIC_TYPES = ['Automação', 'Broadcast', 'Push'];
 const DISTRIBUTION_STATE_SHEET = 'Controle - Distribuição';
 const DISTRIBUTION_CONFIG_SHEET = 'Config - Distribuição';
 const DISTRIBUTION_SCORE_SMOOTHING = 800;
+const DISTRIBUTION_MIN_SESSION_SHARE = 0.01;
 const DISTRIBUTION_MOMENTUM_WEIGHT = 0.15;
 const DISTRIBUTION_MOMENTUM_CLAMP = 0.6;
 const DISTRIBUTION_COVERAGE_TARGET = 0.75;
@@ -1370,7 +1371,7 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
     };
   }
 
-  var referenceRows = allUrls.filter(function (row) { return (row.sessionShare || 0) >= 0.01; });
+  var referenceRows = allUrls.filter(function (row) { return (row.sessionShare || 0) >= DISTRIBUTION_MIN_SESSION_SHARE; });
   if (!referenceRows.length) {
     referenceRows = allUrls.slice();
   }
@@ -1388,7 +1389,17 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
 
   var sortedUrls = allUrls.slice().sort(compareByPerformance);
 
-  var betModeActive = bestSiteRps <= controls.modeThresholdRps;
+  var guaranteeAll = !!controls.urlRequireAll;
+  var controlEligible = guaranteeAll ? sortedUrls.slice() : sortedUrls.filter(function (row) {
+    return (row.sessionShare || 0) >= DISTRIBUTION_MIN_SESSION_SHARE;
+  });
+  var totalEligibleCount = guaranteeAll ? sortedUrls.length : controlEligible.length;
+
+  var priorityConfigured = Math.max(0, Math.round(controls.urlMinRecipients || 0));
+  var prioritySummaryCount = Math.min(priorityConfigured, sortedUrls.length);
+  var priorityTargetCount = guaranteeAll ? Math.min(priorityConfigured, sortedUrls.length) : Math.min(priorityConfigured, controlEligible.length);
+
+  var betModeActive = bestSiteRps < controls.modeThresholdRps;
   var controlReserve = clamp_(controls.controlReserve != null ? controls.controlReserve : 0, 0, 1);
   var controlPortion = betModeActive ? controlReserve : 1;
   var betShare = betModeActive ? Math.max(0, 1 - controlPortion) : 0;
@@ -1396,7 +1407,7 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
   var betCandidates = [];
   if (betModeActive) {
     betCandidates = allUrls.filter(function (row) {
-      return (row.sessionShare || 0) < 0.01 && (row.performanceScore || 0) > referencePerformance;
+      return (row.sessionShare || 0) < DISTRIBUTION_MIN_SESSION_SHARE && (row.performanceScore || 0) > referencePerformance;
     }).sort(compareByPerformance);
     if (!betCandidates.length) {
       controlPortion = 1;
@@ -1419,11 +1430,13 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
     betShare = 0;
   }
 
-  var minShare = clamp_(controls.urlSeedPercent || 0, 0, 1);
-  var priorityCount = Math.min(Math.max(0, Math.round(controls.urlMinRecipients || 0)), sortedUrls.length);
-  var targetPriorityTotal = priorityCount > 0 ? clamp_(controls.urlPriorityShare || 0, 0, 1) : 0;
+  var betTargetKeys = {};
+  betTargets.forEach(function (row) { betTargetKeys[row.key] = true; });
 
-  if (priorityCount > 0 && targetPriorityTotal > controlPortion && betShare > 0) {
+  var minShare = clamp_(controls.urlSeedPercent || 0, 0, 1);
+  var targetPriorityTotal = priorityTargetCount > 0 ? clamp_(controls.urlPriorityShare || 0, 0, 1) : 0;
+
+  if (priorityTargetCount > 0 && targetPriorityTotal > controlPortion && betShare > 0) {
     var borrowForPriority = Math.min(targetPriorityTotal - controlPortion, betShare);
     if (borrowForPriority > 0) {
       controlPortion += borrowForPriority;
@@ -1431,32 +1444,38 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
     }
   }
   var priorityKeys = {};
-  for (var p = 0; p < priorityCount; p++) {
-    priorityKeys[sortedUrls[p].key] = true;
+  for (var p = 0; p < priorityTargetCount; p++) {
+    priorityKeys[controlEligible[p].key] = true;
   }
 
   var limit = Math.max(0, Math.round(controls.urlTargetRecipients || 0));
-  if (priorityCount > 0 && limit > 0 && limit < priorityCount) {
-    limit = priorityCount;
+  if (priorityTargetCount > 0 && limit > 0 && limit < priorityTargetCount) {
+    limit = priorityTargetCount;
   }
-  var guaranteeAll = !!controls.urlRequireAll;
   var activeMap = {};
   var activeSet = [];
-  if (guaranteeAll || limit === 0) {
+  if (guaranteeAll) {
     sortedUrls.forEach(function (row) {
       if (!activeMap[row.key]) {
         activeMap[row.key] = true;
         activeSet.push(row);
       }
     });
+  } else if (limit === 0) {
+    controlEligible.forEach(function (row) {
+      if (!activeMap[row.key]) {
+        activeMap[row.key] = true;
+        activeSet.push(row);
+      }
+    });
   } else {
-    sortedUrls.forEach(function (row) {
+    controlEligible.forEach(function (row) {
       if (priorityKeys[row.key] && !activeMap[row.key]) {
         activeMap[row.key] = true;
         activeSet.push(row);
       }
     });
-    sortedUrls.forEach(function (row) {
+    controlEligible.forEach(function (row) {
       if (activeSet.length >= limit) return;
       if (!activeMap[row.key]) {
         activeMap[row.key] = true;
@@ -1464,11 +1483,11 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
       }
     });
   }
-  var limitApplied = !guaranteeAll && limit > 0 && activeSet.length < sortedUrls.length;
+  var limitApplied = !guaranteeAll && limit > 0 && activeSet.length < totalEligibleCount;
   var activeKeys = {};
   activeSet.forEach(function (row) { activeKeys[row.key] = true; });
   if (!activeSet.length) {
-    activeSet = sortedUrls.slice();
+    activeSet = controlEligible.length ? controlEligible.slice() : sortedUrls.slice();
     activeSet.forEach(function (row) { activeKeys[row.key] = true; });
   }
 
@@ -1479,11 +1498,11 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
   }
   var nonPriorityRows = activeSet.filter(function (row) { return !priorityKeys[row.key]; });
   var nonPriorityCount = nonPriorityRows.length;
-  var minPriorityTotal = priorityCount * minShare;
+  var minPriorityTotal = priorityTargetCount * minShare;
   var priorityAllocation = 0;
   var remainingControl = 0;
   function refreshPriorityAllocation() {
-    priorityAllocation = priorityCount > 0 ? Math.min(controlPortion, Math.max(targetPriorityTotal, minPriorityTotal)) : 0;
+    priorityAllocation = priorityTargetCount > 0 ? Math.min(controlPortion, Math.max(targetPriorityTotal, minPriorityTotal)) : 0;
     remainingControl = Math.max(0, controlPortion - priorityAllocation);
     if (nonPriorityCount === 0) {
       priorityAllocation = controlPortion;
@@ -1491,7 +1510,7 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
     }
   }
   refreshPriorityAllocation();
-  if (priorityCount > 0 && priorityAllocation < minPriorityTotal && betShare > 0) {
+  if (priorityTargetCount > 0 && priorityAllocation < minPriorityTotal && betShare > 0) {
     var borrowForMinimum = Math.min(minPriorityTotal - priorityAllocation, betShare);
     if (borrowForMinimum > 0) {
       controlPortion += borrowForMinimum;
@@ -1502,7 +1521,7 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
   var requiredNonPriority = nonPriorityCount * minShare;
   function enforceNonPriorityFloor() {
     if (requiredNonPriority > remainingControl) {
-      if (priorityCount > 0) {
+      if (priorityTargetCount > 0) {
         var maxPriorityAllocation = Math.max(0, controlPortion - requiredNonPriority);
         if (priorityAllocation > maxPriorityAllocation) {
           priorityAllocation = Math.max(minPriorityTotal, maxPriorityAllocation);
@@ -1596,11 +1615,24 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
     totalAllocated += allocationMap[row.key] || 0;
   });
   if (totalAllocated <= 0 && allUrls.length) {
-    var equal = 1 / allUrls.length;
-    allUrls.forEach(function (row) {
-      allocationMap[row.key] = equal;
-    });
-    totalAllocated = 1;
+    var fallbackCandidates = [];
+    if (betShare > 0 && betTargets.length) {
+      fallbackCandidates = betTargets.slice();
+    } else if (controlEligible.length) {
+      fallbackCandidates = controlEligible.slice();
+    } else {
+      fallbackCandidates = sortedUrls.slice();
+    }
+    if (fallbackCandidates.length) {
+      var equal = 1 / fallbackCandidates.length;
+      fallbackCandidates.forEach(function (row) {
+        allocationMap[row.key] = equal;
+        if (betTargetKeys[row.key]) {
+          betAllocationMap[row.key] = (betAllocationMap[row.key] || 0) + equal;
+        }
+      });
+      totalAllocated = 1;
+    }
   }
   if (totalAllocated > 0 && Math.abs(totalAllocated - 1) > 1e-6) {
     var scale = 1 / totalAllocated;
@@ -1617,12 +1649,15 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
   allUrls.forEach(function (row) {
     var totalShare = allocationMap[row.key] || 0;
     var betPortion = betAllocationMap[row.key] || 0;
+    var sessionEligible = guaranteeAll || (row.sessionShare || 0) >= DISTRIBUTION_MIN_SESSION_SHARE;
     row.betShare = betPortion;
     row.bet = betPortion > 0;
     row.priority = !!priorityKeys[row.key];
     row.active = !!activeKeys[row.key] || row.bet;
     row.guaranteed = row.priority || guaranteeAll;
-    row.limited = !row.active && !row.bet && !guaranteeAll;
+    row.sessionEligible = sessionEligible;
+    row.ineligibleBySessions = !sessionEligible;
+    row.limited = !row.active && !row.bet && sessionEligible && !guaranteeAll && limit > 0;
     row.suggestedGlobalShare = totalShare;
     globalAggregates.push(row);
     siteShareMap[row.site] = (siteShareMap[row.site] || 0) + totalShare;
@@ -1716,7 +1751,7 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
     targetRecipients: guaranteeAll ? 0 : limit,
     limitApplied: limitApplied,
     priorityShareTarget: targetPriorityTotal,
-    priorityCount: priorityCount,
+    priorityCount: prioritySummaryCount,
     priorityActive: priorityActiveCount,
     priorityShareActual: priorityShareAccum,
     betMode: betModeActive,
@@ -1762,10 +1797,15 @@ function describeUrlAllocationReason_(row, siteCtx, controls, index, totalCount,
   if (share <= 0) {
     if (row && row.bet) {
       parts.push('URL ficou elegível para apostas, mas não recebeu tráfego nesta rodada.');
-    } else if ((row && row.limited) || limitApplied) {
+    } else if (row && row.limited) {
       parts.push('Sem tráfego nesta rodada por causa do limite de URLs ativas.');
+    } else if (limitApplied) {
+      parts.push('Sem tráfego nesta rodada por causa do limite global de URLs ativas.');
     } else {
       parts.push('Sem tráfego sugerido nesta rodada.');
+    }
+    if (row && row.ineligibleBySessions && !(controls && controls.urlRequireAll)) {
+      parts.push('Aguardando atingir pelo menos ' + formatShareValue_(DISTRIBUTION_MIN_SESSION_SHARE, 1) + ' das sessões no período para receber tráfego fora do modo apostas.');
     }
     if (row && row.guaranteed) {
       parts.push('Mantida como garantida (' + (row.status || 'seed') + ').');
