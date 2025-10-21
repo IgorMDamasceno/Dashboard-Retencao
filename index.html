@@ -167,30 +167,18 @@
         <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
           <div class="lg:col-span-2">
             <label class="block text-sm text-slate-400 mb-1">Operação <span class="text-red-400">*</span></label>
-            <div class="space-y-2">
-              <input id="filter-operacao-busca" type="search" class="w-full pill rounded-lg px-3 py-2 text-sm text-slate-100 bg-slate-900/40" placeholder="Buscar operação" />
-              <select id="filter-operacao" class="w-full pill rounded-lg px-3 py-2 text-sm text-slate-100 bg-slate-900/40">
-                <option value="">— selecione —</option>
-              </select>
-            </div>
+            <input id="filter-operacao" type="search" list="filter-operacao-options" class="w-full pill rounded-lg px-3 py-2 text-sm text-slate-100 bg-slate-900/40" placeholder="Selecione ou busque operação" autocomplete="off" />
+            <datalist id="filter-operacao-options"></datalist>
           </div>
           <div class="lg:col-span-2">
             <label class="block text-sm text-slate-400 mb-1">Tráfego <span class="text-red-400">*</span></label>
-            <div class="space-y-2">
-              <input id="filter-trafego-busca" type="search" class="w-full pill rounded-lg px-3 py-2 text-sm text-slate-100 bg-slate-900/40" placeholder="Buscar tráfego" />
-              <select id="filter-trafego" class="w-full pill rounded-lg px-3 py-2 text-sm text-slate-100 bg-slate-900/40">
-                <option value="">— selecione —</option>
-              </select>
-            </div>
+            <input id="filter-trafego" type="search" list="filter-trafego-options" class="w-full pill rounded-lg px-3 py-2 text-sm text-slate-100 bg-slate-900/40" placeholder="Selecione ou busque tráfego" autocomplete="off" />
+            <datalist id="filter-trafego-options"></datalist>
           </div>
           <div class="lg:col-span-2">
             <label class="block text-sm text-slate-400 mb-1">Rota (slug)</label>
-            <div class="space-y-2">
-              <input id="filter-rota-busca" type="search" class="w-full pill rounded-lg px-3 py-2 text-sm text-slate-100 bg-slate-900/40" placeholder="Buscar rota" disabled />
-              <select id="filter-rota" class="w-full pill rounded-lg px-3 py-2 text-sm text-slate-100 bg-slate-900/40" disabled>
-                <option value="">Selecione operação e tráfego</option>
-              </select>
-            </div>
+            <input id="filter-rota" type="search" list="filter-rota-options" class="w-full pill rounded-lg px-3 py-2 text-sm text-slate-100 bg-slate-900/40" placeholder="Selecione operação e tráfego" autocomplete="off" disabled />
+            <datalist id="filter-rota-options"></datalist>
           </div>
           <div>
             <label class="block text-sm text-slate-400 mb-1">Data inicial</label>
@@ -473,55 +461,137 @@
         return [op, tr, rt].join('||');
       }
 
-      function filterSelectOptions(select, query) {
-        if (!select) return;
-        var normalized = String(query || '').trim().toLowerCase();
-        Array.from(select.options || []).forEach(function (option, index) {
-          if (!option) return;
-          if (index === 0) {
-            option.hidden = false;
-            return;
-          }
-          var text = String(option.textContent || option.label || option.value || '').trim().toLowerCase();
-          option.hidden = normalized && text.indexOf(normalized) === -1;
-        });
-      }
+      var searchableControls = {};
 
-      function attachSelectSearch(selectId, inputId) {
-        var select = document.getElementById(selectId);
+      function initSearchableControl(inputId, onChange) {
         var input = document.getElementById(inputId);
-        if (!select || !input) return;
-        if (input.dataset.searchAttached === '1') return;
-        input.dataset.searchAttached = '1';
-        input.addEventListener('input', function () {
-          filterSelectOptions(select, input.value);
-        });
-        input.addEventListener('keydown', function (ev) {
-          if (ev.key === 'Enter') {
-            ev.preventDefault();
-            var options = Array.from(select.options || []).filter(function (option, index) {
-              if (!option || option.hidden) return false;
-              if (index === 0 && !option.value) return false;
-              return true;
+        if (!input) return;
+        var control = searchableControls[inputId];
+        if (!control) {
+          control = searchableControls[inputId] = { options: [], lastValue: '', initialized: false, onChange: onChange };
+        } else {
+          control.onChange = onChange;
+        }
+        if (control.initialized) return;
+
+        var commit = function (rawValue) {
+          var normalized = String(rawValue || '').trim().toLowerCase();
+          var match = null;
+          if (normalized) {
+            match = control.options.find(function (opt) {
+              return opt.normalized === normalized;
             });
-            if (options.length) {
-              select.value = options[0].value;
-              select.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+          var newValue = match ? match.value : '';
+          if (newValue !== control.lastValue) {
+            control.lastValue = newValue;
+            if (typeof control.onChange === 'function') {
+              control.onChange(newValue);
             }
           }
+          if (input.value !== newValue) {
+            input.value = newValue;
+          }
+        };
+
+        input.addEventListener('change', function (ev) {
+          commit(ev.target.value);
         });
+        input.addEventListener('blur', function (ev) {
+          commit(ev.target.value);
+        });
+        input.addEventListener('input', function (ev) {
+          if (!ev.target.value) {
+            commit('');
+          }
+        });
+        input.addEventListener('keydown', function (ev) {
+          if (ev.key === 'Escape') {
+            ev.preventDefault();
+            ev.stopPropagation();
+            input.value = '';
+            commit('');
+          }
+        });
+
+        control.commit = commit;
+        control.initialized = true;
       }
 
-      function resetSelectSearch(selectId, inputId) {
-        var select = document.getElementById(selectId);
+      function updateSearchableOptions(inputId, options) {
         var input = document.getElementById(inputId);
-        if (input) {
-          input.value = '';
+        var control = searchableControls[inputId];
+        if (!control) {
+          control = searchableControls[inputId] = { options: [], lastValue: '', initialized: false };
         }
-        if (select) {
-          Array.from(select.options || []).forEach(function (option) {
-            if (option) option.hidden = false;
+        var listId = input ? input.getAttribute('list') : '';
+        var list = listId ? document.getElementById(listId) : null;
+        if (list) {
+          list.innerHTML = '';
+        }
+        control.options = (options || []).map(function (item) {
+          var value = String((item && item.value) || '').trim();
+          if (list) {
+            var optionEl = document.createElement('option');
+            optionEl.value = value;
+            var label = item && item.label ? String(item.label) : '';
+            if (label && label !== value) {
+              optionEl.label = label;
+            }
+            list.appendChild(optionEl);
+          }
+          return { value: value, normalized: value.toLowerCase() };
+        });
+        if (input && !control.options.length) {
+          input.value = '';
+          control.lastValue = '';
+        } else if (control.lastValue) {
+          var exists = control.options.some(function (opt) {
+            return opt.value === control.lastValue;
           });
+          if (!exists) {
+            control.lastValue = '';
+            if (input) input.value = '';
+          }
+        }
+      }
+
+      function setSearchableValue(inputId, value, silent) {
+        var input = document.getElementById(inputId);
+        var control = searchableControls[inputId];
+        var normalized = String(value || '').trim().toLowerCase();
+        var match = control && control.options.find(function (opt) {
+          return opt.normalized === normalized;
+        });
+        var finalValue = match ? match.value : '';
+        if (input) {
+          input.value = finalValue;
+        }
+        if (control) {
+          var changed = control.lastValue !== finalValue;
+          control.lastValue = finalValue;
+          if (!silent && changed && typeof control.onChange === 'function') {
+            control.onChange(finalValue);
+          }
+        }
+      }
+
+      function setSearchableDisabled(inputId, disabled, placeholder) {
+        var input = document.getElementById(inputId);
+        if (!input) return;
+        input.disabled = !!disabled;
+        if (typeof placeholder === 'string') {
+          input.placeholder = placeholder;
+        }
+        if (disabled) {
+          input.value = '';
+          var control = searchableControls[inputId];
+          if (control) {
+            control.lastValue = '';
+            if (typeof control.onChange === 'function') {
+              control.onChange('');
+            }
+          }
         }
       }
 
@@ -530,9 +600,23 @@
         bindFilters();
         bindForms();
         bindSearchInputs();
-        attachSelectSearch('filter-operacao', 'filter-operacao-busca');
-        attachSelectSearch('filter-trafego', 'filter-trafego-busca');
-        attachSelectSearch('filter-rota', 'filter-rota-busca');
+        initSearchableControl('filter-operacao', function (value) {
+          if (state.filters.operation !== value) {
+            state.filters.operation = value;
+            state.filters.route = '';
+            updateRouteFilter();
+          }
+        });
+        initSearchableControl('filter-trafego', function (value) {
+          if (state.filters.traffic !== value) {
+            state.filters.traffic = value;
+            state.filters.route = '';
+            updateRouteFilter();
+          }
+        });
+        initSearchableControl('filter-rota', function (value) {
+          state.filters.route = value;
+        });
         loadConfig();
       });
 
@@ -721,56 +805,41 @@
       }
 
       function updateRouteFilter() {
-        var selectRoute = document.getElementById('filter-rota');
-        var routeSearch = document.getElementById('filter-rota-busca');
-        if (!selectRoute) {
+        var routeInput = document.getElementById('filter-rota');
+        if (!routeInput) {
           return;
         }
-        var operationSelect = document.getElementById('filter-operacao');
-        var trafficSelect = document.getElementById('filter-trafego');
-        var operation = operationSelect ? operationSelect.value : '';
-        var traffic = trafficSelect ? trafficSelect.value : '';
+        var operation = state.filters.operation || '';
+        var traffic = state.filters.traffic || '';
         if (!operation || !traffic) {
-          selectRoute.innerHTML = '<option value="">Selecione operação e tráfego</option>';
-          selectRoute.value = '';
-          selectRoute.disabled = true;
-          if (routeSearch) {
-            routeSearch.value = '';
-            routeSearch.disabled = true;
+          updateSearchableOptions('filter-rota', []);
+          setSearchableDisabled('filter-rota', true, 'Selecione operação e tráfego');
+          if (state.filters.route) {
+            state.filters.route = '';
           }
-          state.filters.route = '';
+          setSearchableValue('filter-rota', '', true);
           return;
         }
         var routes = getIntegrationRoutes(operation, traffic);
         var normalizedCurrent = String(state.filters.route || '').trim().toLowerCase();
         if (!routes.length) {
-          selectRoute.innerHTML = '<option value="">Nenhuma rota configurada</option>';
-          selectRoute.value = '';
-          selectRoute.disabled = true;
-          if (routeSearch) {
-            routeSearch.value = '';
-            routeSearch.disabled = true;
-          }
+          updateSearchableOptions('filter-rota', []);
+          setSearchableDisabled('filter-rota', true, 'Nenhuma rota configurada');
           state.filters.route = '';
+          setSearchableValue('filter-rota', '', true);
           return;
         }
-        selectRoute.disabled = false;
-        if (routeSearch) {
-          routeSearch.disabled = false;
-        }
-        selectRoute.innerHTML = '<option value="">— selecione —</option>';
-        routes.forEach(function (item) {
-          var option = document.createElement('option');
+        var options = routes.map(function (item) {
           var slug = item && item.routeSlug ? item.routeSlug : '';
-          option.value = slug;
           var parts = [];
           parts.push(slug || '—');
           if (item && item.domainId) {
             parts.push('Domínio ' + item.domainId);
           }
-          option.textContent = parts.join(' · ');
-          selectRoute.appendChild(option);
+          return { value: slug, label: parts.join(' · ') };
         });
+        setSearchableDisabled('filter-rota', false, 'Selecione ou busque rota');
+        updateSearchableOptions('filter-rota', options);
         var selected = '';
         if (normalizedCurrent) {
           var match = routes.find(function (item) {
@@ -783,53 +852,60 @@
         if (!selected && routes.length === 1) {
           selected = routes[0].routeSlug || '';
         }
-        selectRoute.value = selected;
-        resetSelectSearch('filter-rota', 'filter-rota-busca');
         state.filters.route = selected;
+        setSearchableValue('filter-rota', selected, true);
       }
 
       function renderFilters() {
-        var selectOp = document.getElementById('filter-operacao');
-        var current = selectOp.value;
-        selectOp.innerHTML = '<option value="">— selecione —</option>';
-        state.groupedOperations.forEach(function (group) {
-          var opt = document.createElement('option');
-          opt.value = group.name;
-          opt.textContent = group.name + ' (' + group.urls.length + ' URL' + (group.urls.length === 1 ? '' : 's') + ')';
-          selectOp.appendChild(opt);
-        });
-        if (current) selectOp.value = current;
-        resetSelectSearch('filter-operacao', 'filter-operacao-busca');
-        selectOp.onchange = function (ev) {
-          state.filters.operation = ev.target.value;
-          state.filters.route = '';
-          updateRouteFilter();
-        };
-
-        var selectTr = document.getElementById('filter-trafego');
-        var currentTraffic = selectTr.value;
-        selectTr.innerHTML = '<option value="">— selecione —</option>';
-        (state.config.trafficTypes || []).forEach(function (type) {
-          var opt = document.createElement('option');
-          opt.value = type;
-          var count = (state.trafficByType[type] || []).length;
-          opt.textContent = type + (count ? ' · ' + count + ' fonte(s)' : '');
-          selectTr.appendChild(opt);
-        });
-        if (currentTraffic) selectTr.value = currentTraffic;
-        resetSelectSearch('filter-trafego', 'filter-trafego-busca');
-        selectTr.onchange = function (ev) {
-          state.filters.traffic = ev.target.value;
-          state.filters.route = '';
-          updateRouteFilter();
-        };
-
-        var selectRoute = document.getElementById('filter-rota');
-        if (selectRoute) {
-          selectRoute.onchange = function (ev) {
-            state.filters.route = ev.target.value;
+        var operationOptions = state.groupedOperations.map(function (group) {
+          return {
+            value: group.name,
+            label: group.name + ' (' + group.urls.length + ' URL' + (group.urls.length === 1 ? '' : 's') + ')'
           };
+        });
+        updateSearchableOptions('filter-operacao', operationOptions);
+        if (!operationOptions.length) {
+          if (state.filters.operation) {
+            state.filters.operation = '';
+          }
+          setSearchableDisabled('filter-operacao', true, 'Nenhuma operação cadastrada');
+        } else {
+          var normalizedOp = String(state.filters.operation || '').trim().toLowerCase();
+          var opMatch = operationOptions.find(function (item) {
+            return String(item.value || '').trim().toLowerCase() === normalizedOp;
+          });
+          if (!opMatch) {
+            state.filters.operation = '';
+          }
+          setSearchableDisabled('filter-operacao', false, 'Selecione ou busque operação');
         }
+        setSearchableValue('filter-operacao', state.filters.operation, true);
+
+        var trafficOptions = (state.config.trafficTypes || []).map(function (type) {
+          var count = (state.trafficByType[type] || []).length;
+          return {
+            value: type,
+            label: count ? type + ' · ' + count + ' fonte(s)' : type
+          };
+        });
+        updateSearchableOptions('filter-trafego', trafficOptions);
+        if (!trafficOptions.length) {
+          if (state.filters.traffic) {
+            state.filters.traffic = '';
+          }
+          setSearchableDisabled('filter-trafego', true, 'Nenhum tráfego cadastrado');
+        } else {
+          var normalizedTraffic = String(state.filters.traffic || '').trim().toLowerCase();
+          var trafficMatch = trafficOptions.find(function (item) {
+            return String(item.value || '').trim().toLowerCase() === normalizedTraffic;
+          });
+          if (!trafficMatch) {
+            state.filters.traffic = '';
+          }
+          setSearchableDisabled('filter-trafego', false, 'Selecione ou busque tráfego');
+        }
+        setSearchableValue('filter-trafego', state.filters.traffic, true);
+
         updateRouteFilter();
       }
 
