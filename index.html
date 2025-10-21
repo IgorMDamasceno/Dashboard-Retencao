@@ -165,6 +165,64 @@
       color: rgba(56, 189, 248, 0.8);
       transform: translateY(-1px);
     }
+    .searchable-results {
+      position: absolute;
+      top: calc(100% + 0.5rem);
+      left: 0;
+      right: 0;
+      z-index: 30;
+      background: linear-gradient(165deg, rgba(15, 23, 42, 0.95), rgba(15, 23, 42, 0.88));
+      border: 1px solid rgba(71, 85, 105, 0.65);
+      box-shadow: 0 20px 35px -15px rgba(15, 23, 42, 0.85);
+      border-radius: 0.9rem;
+      padding: 0.35rem 0;
+      max-height: 18rem;
+      overflow-y: auto;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+    .searchable-results.hidden {
+      display: none;
+    }
+    .searchable-option {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      border: none;
+      background: transparent;
+      color: #e2e8f0;
+      padding: 0.55rem 1rem;
+      font-size: 0.85rem;
+      text-align: left;
+      cursor: pointer;
+      transition: background 0.15s ease, color 0.15s ease;
+    }
+    .searchable-option:hover,
+    .searchable-option:focus {
+      background: rgba(56, 189, 248, 0.12);
+      color: #f8fafc;
+      outline: none;
+    }
+    .searchable-option.is-active {
+      background: rgba(56, 189, 248, 0.18);
+      color: #f8fafc;
+    }
+    .searchable-option-label {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 0.1rem;
+    }
+    .searchable-option-secondary {
+      font-size: 0.72rem;
+      color: rgba(148, 163, 184, 0.8);
+    }
+    .searchable-empty {
+      padding: 0.75rem 1rem;
+      font-size: 0.8rem;
+      color: rgba(148, 163, 184, 0.85);
+    }
   </style>
 </head>
 <body class="text-slate-200">
@@ -189,6 +247,10 @@
             <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75l2.25 2.25 3.75-4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
             Análise
           </button>
+          <button id="tab-distribuicao" class="px-4 py-2 rounded-lg text-slate-300 hover:text-white flex items-center gap-2">
+            <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 6.75h17.25M3 12h13.5M3 17.25h9" /><path stroke-linecap="round" stroke-linejoin="round" d="M17.25 17.25H21v3.75" /></svg>
+            Distribuição
+          </button>
           <button id="tab-config" class="px-4 py-2 rounded-lg text-slate-300 hover:text-white flex items-center gap-2">
             <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v18m9-9H3" /></svg>
             Configuração
@@ -197,8 +259,7 @@
       </div>
     </header>
 
-    <section id="view-analise" class="space-y-8">
-      <div class="card rounded-2xl p-6 space-y-6">
+    <section id="filter-section" class="card rounded-2xl p-6 space-y-6">
         <div class="flex items-center justify-between flex-wrap gap-3">
           <h2 class="text-lg font-semibold text-slate-100 flex items-center gap-2">
             <svg class="w-6 h-6 text-sky-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 5.25h16.5M4.5 9h15M3.75 12.75h16.5M4.5 16.5h15" /></svg>
@@ -215,9 +276,8 @@
                   <path stroke-linecap="round" stroke-linejoin="round" d="M3 7.5l9-4.5 9 4.5M3 7.5L12 12m0 0l9-4.5M12 12V21" />
                 </svg>
               </span>
-              <input id="filter-operacao" type="search" list="filter-operacao-options" class="searchable-select" placeholder="Selecione ou busque operação" autocomplete="off" />
+              <input id="filter-operacao" type="search" class="searchable-select" placeholder="Selecione ou busque operação" autocomplete="off" />
             </div>
-            <datalist id="filter-operacao-options"></datalist>
           </div>
           <div class="lg:col-span-2">
             <label class="block text-sm text-slate-400 mb-1">Tráfego <span class="text-red-400">*</span></label>
@@ -227,11 +287,10 @@
                   <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 6.75h15m-15 5.25h9m-9 5.25h15" />
                 </svg>
               </span>
-              <input id="filter-trafego" type="search" list="filter-trafego-options" class="searchable-select" placeholder="Selecione ou busque tráfego" autocomplete="off" />
+              <input id="filter-trafego" type="search" class="searchable-select" placeholder="Selecione ou busque tráfego" autocomplete="off" />
             </div>
-            <datalist id="filter-trafego-options"></datalist>
           </div>
-          <div class="lg:col-span-2">
+          <div id="route-filter-group" class="lg:col-span-2 hidden">
             <label class="block text-sm text-slate-400 mb-1">Rota (slug)</label>
             <div class="searchable-select-wrapper">
               <span class="searchable-select-icon">
@@ -239,9 +298,8 @@
                   <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v3m0 12v3m9-9h-3M6 12H3m15.364 6.364l-2.121-2.121M8.757 8.757 6.636 6.636m12.728 0-2.121 2.121m-9.193 9.193-2.121 2.121" />
                 </svg>
               </span>
-              <input id="filter-rota" type="search" list="filter-rota-options" class="searchable-select" placeholder="Selecione operação e tráfego" autocomplete="off" disabled />
+              <input id="filter-rota" type="search" class="searchable-select" placeholder="Selecione operação e tráfego" autocomplete="off" disabled />
             </div>
-            <datalist id="filter-rota-options"></datalist>
           </div>
           <div>
             <label class="block text-sm text-slate-400 mb-1">Data inicial</label>
@@ -269,7 +327,12 @@
         </div>
       </div>
 
+    <section id="view-analise" class="space-y-8">
       <div id="analysis-wrapper" class="space-y-8"></div>
+    </section>
+
+    <section id="view-distribuicao" class="hidden space-y-8">
+      <div id="distribution-wrapper" class="space-y-8"></div>
     </section>
 
     <section id="view-config" class="hidden space-y-6">
@@ -470,6 +533,7 @@
           revshare: [],
           trafficTypes: []
         },
+        activeView: 'analysis',
         groupedOperations: [],
         operationIntegrationOptions: [],
         operationIntegrationMap: {},
@@ -514,7 +578,9 @@
         detailedChart: null,
         detailedMetricMenuCleanup: null,
         analysis: null,
-        syncingLinkRouter: false
+        syncingLinkRouter: false,
+        analysisInfo: '',
+        distributionInfo: ''
       };
 
       function makeDistributionContextKey(operation, traffic, route) {
@@ -531,11 +597,33 @@
         if (!input) return;
         var control = searchableControls[inputId];
         if (!control) {
-          control = searchableControls[inputId] = { options: [], lastValue: '', initialized: false, onChange: onChange };
+          control = searchableControls[inputId] = {
+            options: [],
+            filtered: [],
+            lastValue: '',
+            initialized: false,
+            onChange: onChange,
+            dropdown: null,
+            highlightIndex: -1
+          };
         } else {
           control.onChange = onChange;
         }
         if (control.initialized) return;
+
+        var wrapper = input.closest('.searchable-select-wrapper');
+        if (wrapper) {
+          var dropdown = wrapper.querySelector('.searchable-results');
+          if (!dropdown) {
+            dropdown = document.createElement('div');
+            dropdown.className = 'searchable-results hidden';
+            wrapper.appendChild(dropdown);
+          }
+          control.dropdown = dropdown;
+          dropdown.addEventListener('mousedown', function (ev) {
+            ev.preventDefault();
+          });
+        }
 
         var commit = function (rawValue) {
           var normalized = String(rawValue || '').trim().toLowerCase();
@@ -555,18 +643,27 @@
           if (input.value !== newValue) {
             input.value = newValue;
           }
+          hideSearchableDropdown(inputId);
         };
 
         input.addEventListener('change', function (ev) {
           commit(ev.target.value);
         });
         input.addEventListener('blur', function (ev) {
-          commit(ev.target.value);
+          setTimeout(function () {
+            hideSearchableDropdown(inputId);
+            commit(ev.target.value);
+          }, 50);
         });
         input.addEventListener('input', function (ev) {
           if (!ev.target.value) {
             commit('');
+            renderSearchableDropdown(inputId, '');
+            return;
           }
+          control.highlightIndex = -1;
+          renderSearchableDropdown(inputId, ev.target.value);
+          showSearchableDropdown(inputId);
         });
         input.addEventListener('keydown', function (ev) {
           if (ev.key === 'Escape') {
@@ -574,7 +671,43 @@
             ev.stopPropagation();
             input.value = '';
             commit('');
+            hideSearchableDropdown(inputId);
+            return;
           }
+          if (ev.key === 'ArrowDown') {
+            ev.preventDefault();
+            if (!isDropdownVisible(inputId)) {
+              renderSearchableDropdown(inputId, input.value);
+              showSearchableDropdown(inputId);
+            }
+            moveSearchableHighlight(inputId, 1);
+            return;
+          }
+          if (ev.key === 'ArrowUp') {
+            ev.preventDefault();
+            if (!isDropdownVisible(inputId)) {
+              renderSearchableDropdown(inputId, input.value);
+              showSearchableDropdown(inputId);
+            }
+            moveSearchableHighlight(inputId, -1);
+            return;
+          }
+          if (ev.key === 'Enter') {
+            if (isDropdownVisible(inputId)) {
+              ev.preventDefault();
+              var selected = getHighlightedSearchableOption(inputId);
+              if (selected) {
+                control.commit(selected.value);
+                input.blur();
+              } else {
+                commit(ev.target.value);
+              }
+            }
+          }
+        });
+        input.addEventListener('focus', function () {
+          renderSearchableDropdown(inputId, input.value);
+          showSearchableDropdown(inputId);
         });
 
         control.commit = commit;
@@ -585,26 +718,32 @@
         var input = document.getElementById(inputId);
         var control = searchableControls[inputId];
         if (!control) {
-          control = searchableControls[inputId] = { options: [], lastValue: '', initialized: false };
-        }
-        var listId = input ? input.getAttribute('list') : '';
-        var list = listId ? document.getElementById(listId) : null;
-        if (list) {
-          list.innerHTML = '';
+          control = searchableControls[inputId] = {
+            options: [],
+            filtered: [],
+            lastValue: '',
+            initialized: false,
+            dropdown: null,
+            highlightIndex: -1
+          };
         }
         control.options = (options || []).map(function (item) {
           var value = String((item && item.value) || '').trim();
-          if (list) {
-            var optionEl = document.createElement('option');
-            optionEl.value = value;
-            var label = item && item.label ? String(item.label) : '';
-            if (label && label !== value) {
-              optionEl.label = label;
-            }
-            list.appendChild(optionEl);
-          }
-          return { value: value, normalized: value.toLowerCase() };
+          var label = item && item.label ? String(item.label) : value;
+          var secondary = item && item.secondary ? String(item.secondary) : '';
+          var searchTokens = [value, label, secondary]
+            .filter(function (part) { return part; })
+            .join(' ')
+            .toLowerCase();
+          return {
+            value: value,
+            label: label,
+            secondary: secondary,
+            normalized: value.toLowerCase(),
+            search: searchTokens
+          };
         });
+        control.filtered = control.options.slice();
         if (input && !control.options.length) {
           input.value = '';
           control.lastValue = '';
@@ -617,6 +756,7 @@
             if (input) input.value = '';
           }
         }
+        renderSearchableDropdown(inputId, input ? input.value : '');
       }
 
       function setSearchableValue(inputId, value, silent) {
@@ -636,6 +776,8 @@
           if (!silent && changed && typeof control.onChange === 'function') {
             control.onChange(finalValue);
           }
+          control.highlightIndex = -1;
+          renderSearchableDropdown(inputId, finalValue);
         }
       }
 
@@ -654,8 +796,119 @@
             if (typeof control.onChange === 'function') {
               control.onChange('');
             }
+            hideSearchableDropdown(inputId);
           }
         }
+      }
+
+      function renderSearchableDropdown(inputId, query) {
+        var control = searchableControls[inputId];
+        var input = document.getElementById(inputId);
+        if (!control || !control.dropdown || !input) return;
+        var dropdown = control.dropdown;
+        var normalized = String(query || '').trim().toLowerCase();
+        var options = control.options || [];
+        control.filtered = normalized
+          ? options.filter(function (opt) {
+              return opt.search.indexOf(normalized) !== -1;
+            })
+          : options.slice();
+        dropdown.innerHTML = '';
+        control.highlightIndex = control.highlightIndex != null ? control.highlightIndex : -1;
+        if (!control.filtered.length) {
+          dropdown.appendChild(createSearchableEmpty());
+          if (!dropdown.classList.contains('hidden')) {
+            dropdown.classList.remove('hidden');
+          }
+          return;
+        }
+        control.filtered.forEach(function (opt, index) {
+          var optionButton = document.createElement('button');
+          optionButton.type = 'button';
+          optionButton.className = 'searchable-option';
+          if (index === control.highlightIndex) {
+            optionButton.classList.add('is-active');
+          }
+          var labelWrapper = document.createElement('span');
+          labelWrapper.className = 'searchable-option-label';
+          labelWrapper.textContent = opt.label;
+          if (opt.secondary) {
+            var secondary = document.createElement('span');
+            secondary.className = 'searchable-option-secondary';
+            secondary.textContent = opt.secondary;
+            labelWrapper.appendChild(secondary);
+          }
+          optionButton.appendChild(labelWrapper);
+          optionButton.addEventListener('click', function (ev) {
+            ev.preventDefault();
+            if (control.commit) {
+              control.commit(opt.value);
+            }
+            input.blur();
+          });
+          dropdown.appendChild(optionButton);
+        });
+      }
+
+      function createSearchableEmpty() {
+        var empty = document.createElement('div');
+        empty.className = 'searchable-empty';
+        empty.textContent = 'Nenhuma opção encontrada.';
+        return empty;
+      }
+
+      function showSearchableDropdown(inputId) {
+        var control = searchableControls[inputId];
+        if (!control || !control.dropdown) return;
+        if (control.options && control.options.length) {
+          control.dropdown.classList.remove('hidden');
+        }
+      }
+
+      function hideSearchableDropdown(inputId) {
+        var control = searchableControls[inputId];
+        if (!control || !control.dropdown) return;
+        control.dropdown.classList.add('hidden');
+        control.highlightIndex = -1;
+      }
+
+      function isDropdownVisible(inputId) {
+        var control = searchableControls[inputId];
+        if (!control || !control.dropdown) return false;
+        return !control.dropdown.classList.contains('hidden');
+      }
+
+      function moveSearchableHighlight(inputId, delta) {
+        var control = searchableControls[inputId];
+        if (!control || !control.dropdown) return;
+        var options = control.filtered || [];
+        if (!options.length) return;
+        if (!isDropdownVisible(inputId)) {
+          showSearchableDropdown(inputId);
+        }
+        var newIndex = control.highlightIndex + delta;
+        if (newIndex < 0) newIndex = options.length - 1;
+        if (newIndex >= options.length) newIndex = 0;
+        control.highlightIndex = newIndex;
+        var buttons = control.dropdown.querySelectorAll('.searchable-option');
+        buttons.forEach(function (btn, index) {
+          if (index === newIndex) {
+            btn.classList.add('is-active');
+            btn.scrollIntoView({ block: 'nearest' });
+          } else {
+            btn.classList.remove('is-active');
+          }
+        });
+      }
+
+      function getHighlightedSearchableOption(inputId) {
+        var control = searchableControls[inputId];
+        if (!control) return null;
+        var options = control.filtered || [];
+        if (control.highlightIndex < 0 || control.highlightIndex >= options.length) {
+          return null;
+        }
+        return options[control.highlightIndex];
       }
 
       document.addEventListener('DOMContentLoaded', function () {
@@ -679,29 +932,93 @@
         });
         initSearchableControl('filter-rota', function (value) {
           state.filters.route = value;
+          if (value && state.filters.operation && state.filters.traffic) {
+            aplicarFiltros();
+          } else {
+            renderDistributionPage();
+          }
         });
         loadConfig();
       });
 
       function bindTabs() {
         var tabAnalise = document.getElementById('tab-analise');
+        var tabDistribuicao = document.getElementById('tab-distribuicao');
+        var tabConfig = document.getElementById('tab-config');
+        if (tabAnalise) {
+          tabAnalise.addEventListener('click', function () {
+            setActiveView('analysis');
+          });
+        }
+        if (tabDistribuicao) {
+          tabDistribuicao.addEventListener('click', function () {
+            setActiveView('distribution');
+          });
+        }
+        if (tabConfig) {
+          tabConfig.addEventListener('click', function () {
+            setActiveView('config');
+          });
+        }
+        setActiveView(state.activeView || 'analysis');
+      }
+
+      function setActiveView(view) {
+        var tabAnalise = document.getElementById('tab-analise');
+        var tabDistribuicao = document.getElementById('tab-distribuicao');
         var tabConfig = document.getElementById('tab-config');
         var viewAnalise = document.getElementById('view-analise');
+        var viewDistribuicao = document.getElementById('view-distribuicao');
         var viewConfig = document.getElementById('view-config');
-        tabAnalise.addEventListener('click', function () {
-          tabAnalise.classList.add('bg-blue-600', 'text-white');
-          tabConfig.classList.remove('bg-blue-600', 'text-white');
-          tabConfig.classList.add('text-slate-300');
-          viewAnalise.classList.remove('hidden');
-          viewConfig.classList.add('hidden');
-        });
-        tabConfig.addEventListener('click', function () {
-          tabConfig.classList.add('bg-blue-600', 'text-white');
-          tabAnalise.classList.remove('bg-blue-600', 'text-white');
-          tabAnalise.classList.add('text-slate-300');
-          viewConfig.classList.remove('hidden');
-          viewAnalise.classList.add('hidden');
-        });
+        var filterSection = document.getElementById('filter-section');
+        var routeGroup = document.getElementById('route-filter-group');
+        state.activeView = view;
+        if (tabAnalise) {
+          tabAnalise.classList.toggle('bg-blue-600', view === 'analysis');
+          tabAnalise.classList.toggle('text-white', view === 'analysis');
+          tabAnalise.classList.toggle('text-slate-300', view !== 'analysis');
+        }
+        if (tabDistribuicao) {
+          tabDistribuicao.classList.toggle('bg-blue-600', view === 'distribution');
+          tabDistribuicao.classList.toggle('text-white', view === 'distribution');
+          tabDistribuicao.classList.toggle('text-slate-300', view !== 'distribution');
+        }
+        if (tabConfig) {
+          tabConfig.classList.toggle('bg-blue-600', view === 'config');
+          tabConfig.classList.toggle('text-white', view === 'config');
+          tabConfig.classList.toggle('text-slate-300', view !== 'config');
+        }
+        if (viewAnalise) {
+          viewAnalise.classList.toggle('hidden', view !== 'analysis');
+        }
+        if (viewDistribuicao) {
+          viewDistribuicao.classList.toggle('hidden', view !== 'distribution');
+        }
+        if (viewConfig) {
+          viewConfig.classList.toggle('hidden', view !== 'config');
+        }
+        if (filterSection) {
+          filterSection.classList.toggle('hidden', view === 'config');
+        }
+        if (routeGroup) {
+          routeGroup.classList.toggle('hidden', view !== 'distribution');
+        }
+        if (view === 'analysis') {
+          updateLatestInfo(state.analysisInfo);
+          renderAnalysis();
+        } else if (view === 'distribution') {
+          updateLatestInfo(state.distributionInfo);
+          renderDistributionPage();
+        } else {
+          updateLatestInfo('');
+        }
+      }
+
+      function updateLatestInfo(text) {
+        var infoElement = document.getElementById('latest-info');
+        if (infoElement) {
+          infoElement.textContent = text || '';
+        }
       }
 
       function bindFilters() {
@@ -894,12 +1211,18 @@
         }
         var options = routes.map(function (item) {
           var slug = item && item.routeSlug ? item.routeSlug : '';
-          var parts = [];
-          parts.push(slug || '—');
+          var secondaryParts = [];
           if (item && item.domainId) {
-            parts.push('Domínio ' + item.domainId);
+            secondaryParts.push('Domínio ' + item.domainId);
           }
-          return { value: slug, label: parts.join(' · ') };
+          if (item && item.trafficType) {
+            secondaryParts.push('Tráfego ' + item.trafficType);
+          }
+          return {
+            value: slug,
+            label: slug || '—',
+            secondary: secondaryParts.join(' • ')
+          };
         });
         setSearchableDisabled('filter-rota', false, 'Selecione ou busque rota');
         updateSearchableOptions('filter-rota', options);
@@ -1503,8 +1826,9 @@
         if (!route && availableRoutes.length === 1) {
           route = availableRoutes[0].routeSlug || '';
         }
-        if (!route && availableRoutes.length > 1) {
-          showToast('Selecione o slug da rota desejada.', 'error');
+        var routeRequired = state.activeView === 'distribution';
+        if (routeRequired && !route && availableRoutes.length > 1) {
+          showToast('Selecione o slug da rota desejada para continuar.', 'error');
           return;
         }
         state.filters.operation = operation;
@@ -1542,7 +1866,7 @@
               responseFilters.route || state.filters.route
             );
             syncDistributionState(data && data.distribution, true, contextKey);
-            renderAnalysis();
+            renderAllViews();
           })
           .withFailureHandler(handleError)
           .getDashboardData({
@@ -1558,15 +1882,18 @@
 
       function renderAnalysis() {
         var wrapper = document.getElementById('analysis-wrapper');
+        if (!wrapper) return;
         wrapper.innerHTML = '';
         var data = state.analysis;
         var siteRows = data && data.site && data.site.rows ? data.site.rows.length : 0;
         var urlRows = data && data.url && data.url.rows ? data.url.rows.length : 0;
-        var distributionRows = data && data.distribution && data.distribution.sites ? data.distribution.sites.length : 0;
         var detailedRows = data && data.detailed && data.detailed.hours && data.detailed.hours.length && ((data.detailed.urls && data.detailed.urls.length) || (data.detailed.sites && data.detailed.sites.length)) ? 1 : 0;
-        if (!data || (!siteRows && !urlRows && !distributionRows && !detailedRows)) {
+        if (!data || (!siteRows && !urlRows && !detailedRows)) {
           wrapper.innerHTML = '<div class="card rounded-2xl p-6 text-center text-slate-400">Nenhum dado encontrado para os filtros selecionados.</div>';
-          document.getElementById('latest-info').textContent = '';
+          state.analysisInfo = '';
+          if (state.activeView === 'analysis') {
+            updateLatestInfo('');
+          }
           return;
         }
         if (data && data.distribution) {
@@ -1581,25 +1908,22 @@
           state.detailedChart = null;
         }
         wrapper.appendChild(renderAnalysisTabs(data));
-        if (state.analysisTab === 'distribution') {
-          var infoParts = [];
-          var distributionInfo = buildDistributionInfo(data && data.distribution);
-          if (distributionInfo) infoParts.push(distributionInfo);
-          var integrationInfo = buildIntegrationInfo(data && data.integration);
-          if (integrationInfo) infoParts.push(integrationInfo);
-          document.getElementById('latest-info').textContent = infoParts.join(' • ');
-          renderDistributionView(data && data.distribution, wrapper);
-          return;
-        }
         if (state.analysisTab === 'detailed') {
-          document.getElementById('latest-info').textContent = buildDetailedInfo(data && data.detailed, data && data.filters);
+          var detailedInfo = buildDetailedInfo(data && data.detailed, data && data.filters);
+          state.analysisInfo = detailedInfo;
+          if (state.activeView === 'analysis') {
+            updateLatestInfo(detailedInfo);
+          }
           renderDetailedView(data && data.detailed, wrapper);
           return;
         }
+        var infoText = '';
         if (siteRows || urlRows) {
-          document.getElementById('latest-info').textContent = buildOverviewInfo(data);
-        } else {
-          document.getElementById('latest-info').textContent = '';
+          infoText = buildOverviewInfo(data);
+        }
+        state.analysisInfo = infoText;
+        if (state.activeView === 'analysis') {
+          updateLatestInfo(infoText);
         }
         if (!siteRows && !urlRows) {
           var emptyOverview = document.createElement('div');
@@ -1616,23 +1940,48 @@
         }
       }
 
+      function renderDistributionPage() {
+        var wrapper = document.getElementById('distribution-wrapper');
+        if (!wrapper) return;
+        wrapper.innerHTML = '';
+        var data = state.analysis;
+        var distribution = data && data.distribution ? data.distribution : null;
+        if (distribution) {
+          syncDistributionState(distribution);
+        }
+        var infoParts = [];
+        if (distribution) {
+          var distributionInfo = buildDistributionInfo(distribution);
+          if (distributionInfo) infoParts.push(distributionInfo);
+        }
+        var integrationInfo = buildIntegrationInfo(data && data.integration);
+        if (integrationInfo) infoParts.push(integrationInfo);
+        var infoText = infoParts.join(' • ');
+        state.distributionInfo = infoText;
+        if (state.activeView === 'distribution') {
+          updateLatestInfo(infoText);
+        }
+        renderDistributionView(distribution, wrapper);
+      }
+
+      function renderAllViews() {
+        renderAnalysis();
+        renderDistributionPage();
+      }
+
       function ensureActiveAnalysisTab(data) {
         var hasOverview = data && ((data.site && data.site.rows && data.site.rows.length) || (data.url && data.url.rows && data.url.rows.length));
         var hasDetailed = data && data.detailed && data.detailed.hours && data.detailed.hours.length && ((data.detailed.urls && data.detailed.urls.length) || (data.detailed.sites && data.detailed.sites.length));
-        var hasDistribution = data && data.distribution && data.distribution.sites && data.distribution.sites.length;
         var current = state.analysisTab;
         var available = {
           overview: !!hasOverview,
-          detailed: !!hasDetailed,
-          distribution: !!hasDistribution
+          detailed: !!hasDetailed
         };
         if (!available[current]) {
           if (available.overview) {
             state.analysisTab = 'overview';
           } else if (available.detailed) {
             state.analysisTab = 'detailed';
-          } else if (available.distribution) {
-            state.analysisTab = 'distribution';
           } else {
             state.analysisTab = 'overview';
           }
@@ -1644,12 +1993,10 @@
         tabsCard.className = 'card rounded-2xl p-2 flex flex-wrap gap-2';
         var hasOverview = data && data.site && data.site.rows && data.site.rows.length;
         hasOverview = hasOverview || (data && data.url && data.url.rows && data.url.rows.length);
-        var hasDistribution = data && data.distribution && data.distribution.sites && data.distribution.sites.length;
         var hasDetailed = data && data.detailed && data.detailed.hours && data.detailed.hours.length && ((data.detailed.urls && data.detailed.urls.length) || (data.detailed.sites && data.detailed.sites.length));
         var tabs = [
           { id: 'overview', label: 'Resumo de desempenho', available: hasOverview },
-          { id: 'detailed', label: 'Análise detalhada', available: hasDetailed },
-          { id: 'distribution', label: 'Distribuição inteligente', available: hasDistribution }
+          { id: 'detailed', label: 'Análise detalhada', available: hasDetailed }
         ];
         tabs.forEach(function (tab) {
           var button = document.createElement('button');
@@ -2608,7 +2955,7 @@
             if (isNaN(raw)) return;
             var normalized = field.percent ? raw / 100 : raw;
             updateDistributionParam(field.key, normalized);
-            renderAnalysis();
+            renderAllViews();
           });
           wrapper.appendChild(input);
           grid.appendChild(wrapper);
@@ -2624,7 +2971,7 @@
         requireInput.checked = !!params.urlRequireAll;
         requireInput.addEventListener('change', function (ev) {
           updateDistributionParam('urlRequireAll', ev.target.checked ? 1 : 0);
-          renderAnalysis();
+          renderAllViews();
         });
         requireLabel.appendChild(requireInput);
         var requireText = document.createElement('span');
@@ -2819,7 +3166,7 @@
           var site = target.getAttribute('data-site-select');
           if (!site) return;
           state.distribution.selectedSite = site;
-          renderAnalysis();
+          renderAllViews();
         });
         return card;
       }
@@ -3024,7 +3371,7 @@
         searchInput.value = state.distribution.urlSearch || '';
         searchInput.addEventListener('input', function (ev) {
           state.distribution.urlSearch = ev.target.value;
-          renderAnalysis();
+          renderAllViews();
         });
         searchWrapper.appendChild(searchLabel);
         searchWrapper.appendChild(searchInput);
@@ -3261,7 +3608,7 @@
               responseFilters.route || state.filters.route
             );
             syncDistributionState(data && data.distribution, true, contextKey);
-            renderAnalysis();
+            renderAllViews();
           })
           .withFailureHandler(handleError)
           .getDashboardData({
@@ -3316,7 +3663,7 @@
           return;
         }
         state.syncingLinkRouter = true;
-        renderAnalysis();
+        renderAllViews();
         showLoading(true);
         google.script.run
           .withSuccessHandler(function (result) {
@@ -3349,7 +3696,7 @@
               state.filters.route = selectedRoute || route || '';
               updateRouteFilter();
             }
-            renderAnalysis();
+            renderAllViews();
             var successMessage = result && result.message ? result.message : 'Percentuais sincronizados com sucesso.';
             showToast(successMessage, 'success');
             if (result) {
@@ -3374,7 +3721,7 @@
           .withFailureHandler(function (err) {
             state.syncingLinkRouter = false;
             showLoading(false);
-            renderAnalysis();
+            renderAllViews();
             handleError(err);
           })
           .syncLinkRouterDistribution({
@@ -3400,7 +3747,7 @@
           direction = current.direction === 'desc' ? 'asc' : 'desc';
         }
         state.sort[section] = { key: key, direction: direction };
-        renderAnalysis();
+        renderAllViews();
       }
 
       function buildSortHeader(section, key, label, alignment) {
