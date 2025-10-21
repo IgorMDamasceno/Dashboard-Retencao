@@ -9,6 +9,13 @@ const LINK_ROUTER_TOKEN = '1|crewZvM3pCrHsz9gwWVfzyzQ5IrTk0T7gltREA4d67dc7105';
 const TRAFFIC_TYPES = ['Automação', 'Broadcast', 'Push'];
 const DISTRIBUTION_STATE_SHEET = 'Controle - Distribuição';
 const DISTRIBUTION_CONFIG_SHEET = 'Config - Distribuição';
+const DISTRIBUTION_SCORE_SMOOTHING = 800;
+const DISTRIBUTION_MOMENTUM_WEIGHT = 0.15;
+const DISTRIBUTION_MOMENTUM_CLAMP = 0.6;
+const DISTRIBUTION_COVERAGE_TARGET = 0.75;
+const DISTRIBUTION_COVERAGE_FLOOR = 0.5;
+const DISTRIBUTION_COVERAGE_CAP = 0.97;
+const DISTRIBUTION_COVERAGE_BONUS = 0.25;
 
 function doGet() {
   return HtmlService.createTemplateFromFile('index')
@@ -975,34 +982,15 @@ function buildEmptyDistribution_() {
 
 function getDefaultDistributionControls_() {
   return {
-    totalSessions: 10000,
-    tau: 60,
-    tauLocal: 50,
-    reliabilityK: 100,
-    ucbZ: 10,
-    siteMinShare: 0.05,
-    siteMaxShare: 0.35,
-    siteStep: 0.4,
-    siteMinSessions: 300,
+    totalSessions: 0,
     urlSeedPercent: 0.02,
-    urlSeedSessions: 50,
-    urlMinRecipients: 3,
+    urlMinRecipients: 1,
+    urlPriorityShare: 0.6,
     urlTargetRecipients: 0,
-    urlPriorityShare: 0.7,
     urlRequireAll: 0,
-    urlMaxShare: 0.4,
-    urlStep: 0.35,
-    coverageTarget: 0.75,
-    coverageCap: 0.95,
-    coverageBonusFactor: 0.2,
-    coveragePenaltyFloor: 0.5,
     modeThresholdRps: 250,
-    modeThresholdCv: 0.15,
-    exploitPortion: 0.7,
-    explorePortion: 0.3,
-    momentumExploreThreshold: 0.1,
-    coverageExploreThreshold: 0.7,
-    controlReserve: 0.1
+    controlReserve: 0.4,
+    betMinShare: 0.05
   };
 }
 
@@ -1012,34 +1000,28 @@ function buildDistributionControls_(params) {
   params = params || {};
   Object.keys(defaults).forEach(function (key) {
     var value = params.hasOwnProperty(key) ? params[key] : defaults[key];
+    if (key === 'urlRequireAll') {
+      controls[key] = coerceBoolean_(value) ? 1 : 0;
+      return;
+    }
     var parsed = coerceNumber_(value, defaults[key]);
     if (key === 'totalSessions') {
-      controls[key] = Math.max(1, Math.round(parsed));
-    } else if (key === 'tau' || key === 'tauLocal') {
-      controls[key] = Math.max(1, parsed);
-    } else if (key === 'reliabilityK' || key === 'siteMinSessions' || key === 'urlSeedSessions' || key === 'urlMinRecipients' || key === 'urlTargetRecipients') {
       controls[key] = Math.max(0, Math.round(parsed));
-    } else if (key === 'ucbZ') {
+    } else if (key === 'urlMinRecipients' || key === 'urlTargetRecipients') {
+      controls[key] = Math.max(0, Math.round(parsed));
+    } else if (key === 'urlSeedPercent' || key === 'urlPriorityShare' || key === 'controlReserve' || key === 'betMinShare') {
+      controls[key] = clamp_(parsed, 0, 1);
+    } else if (key === 'modeThresholdRps') {
       controls[key] = Math.max(0, parsed);
-    } else if (key === 'urlRequireAll') {
-      controls[key] = parsed ? 1 : 0;
-    } else if (key === 'urlPriorityShare') {
-      controls[key] = Math.max(0, Math.min(1, parsed));
     } else {
-      controls[key] = Math.max(0, parsed);
+      controls[key] = parsed;
     }
   });
-  if (controls.exploitPortion + controls.explorePortion > 1) {
-    var total = controls.exploitPortion + controls.explorePortion;
-    controls.exploitPortion = controls.exploitPortion / total;
-    controls.explorePortion = controls.explorePortion / total;
-  }
   return controls;
 }
 
 function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
   var controls = buildDistributionControls_(params);
-  var globalLimitEnabled = !controls.urlRequireAll && Math.max(0, Math.round(controls.urlTargetRecipients || 0)) > 0;
   var windowHours = hoursInfo && hoursInfo.windowHours ? hoursInfo.windowHours : [];
   var hourKeys = windowHours.map(function (hour) { return hour.key; });
   if (!rows || !rows.length || !hourKeys.length) {
@@ -1169,9 +1151,9 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
       var ecpm = block.requests ? block.adjustedEcpmWeighted / block.requests : 0;
       var urlState = urlStates[urlKey] || {};
       var rounds = Math.max(0, Math.round(coerceNumber_(urlState.rounds, 0)));
-      var weight = urlSessions / (urlSessions + controls.reliabilityK);
+      var weight = urlSessions / (urlSessions + DISTRIBUTION_SCORE_SMOOTHING);
       var momentum = computeMomentum_(urlHourRps);
-      var coverageFactor = computeCoverageFactor_(coverageRatio, controls);
+      var coverageFactor = computeCoverageFactor_(coverageRatio);
       var ecpmEff = ecpm * coverageRatio;
       var ecpmScore = ecpmEff * coverageFactor;
       urlEntries.push({
@@ -1197,47 +1179,13 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
 
     var siteCoverageRatio = coverageRequests ? coverageWeighted / coverageRequests : 0;
     var siteCoverage = siteCoverageRatio * 100;
-    var siteCoverageFactor = computeCoverageFactor_(siteCoverageRatio, controls);
+    var siteCoverageFactor = computeCoverageFactor_(siteCoverageRatio);
     var siteEcpm = coverageRequests ? ecpmWeighted / coverageRequests : 0;
     var siteEcpmEff = siteEcpm * siteCoverageRatio;
     var siteEcpmScore = siteEcpmEff * siteCoverageFactor;
     var siteMomentum = computeMomentum_(hourRps);
-    var siteConfidence = sessionsWindow / (sessionsWindow + controls.reliabilityK);
+    var siteConfidence = sessionsWindow / (sessionsWindow + DISTRIBUTION_SCORE_SMOOTHING);
     var siteScore = siteEcpmScore;
-    if (siteCoverageRatio >= controls.coverageTarget) {
-      siteScore *= 1.02;
-    }
-
-    var roundsTotal = 0;
-    var roundsCount = 0;
-    urlEntries.forEach(function (entry) {
-      var scoreBase = entry.weight * entry.ecpmScore + (1 - entry.weight) * siteEcpmScore;
-      var momentumFactor = 1 + 0.15 * clamp_(entry.momentum, -0.5, 0.5);
-      entry.baseScore = scoreBase;
-      entry.momentumFactor = momentumFactor;
-      entry.siteEcpmScore = siteEcpmScore;
-      entry.score = scoreBase * momentumFactor;
-      roundsTotal += entry.rounds;
-      roundsCount++;
-    });
-    var R = Math.max(roundsTotal, roundsCount, 1);
-    var lnR = Math.log(R + 1);
-    urlEntries.forEach(function (entry) {
-      entry.explorationBonus = controls.ucbZ * Math.sqrt(lnR / (entry.rounds + 1));
-    });
-
-    var apostas = false;
-    if (urlEntries.length) {
-      var sortedByRps = urlEntries.slice().sort(function (a, b) { return b.rps - a.rps; });
-      var quartileCount = Math.max(1, Math.ceil(sortedByRps.length / 4));
-      var topQuartil = sortedByRps.slice(0, quartileCount).filter(function (entry) { return entry.sessions > 0; });
-      if (topQuartil.length) {
-        var mean = average_(topQuartil.map(function (entry) { return entry.rps; }));
-        var std = standardDeviation_(topQuartil.map(function (entry) { return entry.rps; }));
-        var cv = mean ? std / mean : 0;
-        apostas = mean < controls.modeThresholdRps && cv < controls.modeThresholdCv;
-      }
-    }
 
     siteRows.push({
       site: siteKey,
@@ -1252,12 +1200,12 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
       momentum: siteMomentum,
       confidence: siteConfidence,
       score: siteScore,
-      urls: urlEntries,
-      apostas: apostas
+      urls: urlEntries
     });
   });
 
   if (!siteRows.length) {
+    controls.totalSessions = 0;
     return {
       controls: controls,
       sites: [],
@@ -1273,10 +1221,27 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
         activeCount: 0,
         totalCount: 0,
         targetRecipients: 0,
-        limitApplied: false
+        limitApplied: false,
+        priorityShareTarget: 0,
+        priorityCount: 0,
+        priorityActive: 0,
+        priorityShareActual: 0,
+        betMode: false,
+        betShareActual: 0,
+        betRecipients: 0
       }
     };
   }
+
+  var totalSessionsWindow = 0;
+  var totalRevenueWindow = 0;
+  var bestSiteRps = 0;
+  siteRows.forEach(function (row) {
+    totalSessionsWindow += row.sessions || 0;
+    totalRevenueWindow += row.revenue || 0;
+    if (row.rps > bestSiteRps) bestSiteRps = row.rps;
+  });
+  controls.totalSessions = totalSessionsWindow;
 
   var globalMaxScore = 0;
   var globalMaxEcpmEff = 0;
@@ -1284,306 +1249,53 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
   siteRows.forEach(function (siteRow) {
     var urls = siteRow.urls || [];
     urls.forEach(function (entry) {
-      var scoreValue = Math.max(0, coerceNumber_(entry.score, 0));
-      var ecpmEffValue = Math.max(0, coerceNumber_(entry.ecpmEff, 0));
-      var rpsValue = Math.max(0, coerceNumber_(entry.rps, 0));
-      if (scoreValue > globalMaxScore) globalMaxScore = scoreValue;
-      if (ecpmEffValue > globalMaxEcpmEff) globalMaxEcpmEff = ecpmEffValue;
-      if (rpsValue > globalMaxRps) globalMaxRps = rpsValue;
+      var reliability = entry.sessions / (entry.sessions + DISTRIBUTION_SCORE_SMOOTHING);
+      var coverageFactor = computeCoverageFactor_(entry.coverageRatio);
+      var blended = reliability * (entry.ecpmEff || 0) + (1 - reliability) * (siteRow.ecpmEff || 0);
+      var momentumClamp = clamp_(entry.momentum, -DISTRIBUTION_MOMENTUM_CLAMP, DISTRIBUTION_MOMENTUM_CLAMP);
+      var momentumFactor = 1 + DISTRIBUTION_MOMENTUM_WEIGHT * momentumClamp;
+      var score = blended * coverageFactor * Math.max(0.5, momentumFactor);
+      entry.score = score;
+      entry.baseScore = blended;
+      entry.coverageFactor = coverageFactor;
+      entry.momentumFactor = momentumFactor;
+      if (score > globalMaxScore) globalMaxScore = score;
+      if (entry.ecpmEff > globalMaxEcpmEff) globalMaxEcpmEff = entry.ecpmEff;
+      if (entry.rps > globalMaxRps) globalMaxRps = entry.rps;
     });
   });
 
   siteRows.forEach(function (siteRow) {
     var urls = siteRow.urls || [];
     urls.forEach(function (entry) {
-      var normalizedScore = globalMaxScore > 0 ? Math.max(0, coerceNumber_(entry.score, 0)) / globalMaxScore : 0;
-      var normalizedEcpm = globalMaxEcpmEff > 0 ? Math.max(0, coerceNumber_(entry.ecpmEff, 0)) / globalMaxEcpmEff : 0;
-      var normalizedRps = globalMaxRps > 0 ? Math.max(0, coerceNumber_(entry.rps, 0)) / globalMaxRps : 0;
-      var components = [];
-      if (globalMaxScore > 0) components.push(normalizedScore);
-      if (globalMaxEcpmEff > 0) components.push(normalizedEcpm);
-      if (globalMaxRps > 0) components.push(normalizedRps);
-      if (!components.length) components.push(0);
-      entry.normalizedScore = normalizedScore;
-      entry.normalizedEcpmEff = normalizedEcpm;
-      entry.normalizedRpsEff = normalizedRps;
-      entry.performanceScore = average_(components);
-      entry.ucbScore = entry.performanceScore + entry.explorationBonus;
+      entry.normalizedScore = globalMaxScore > 0 ? clamp_(entry.score / globalMaxScore, 0, 1) : 0;
+      entry.normalizedEcpmEff = globalMaxEcpmEff > 0 ? clamp_(entry.ecpmEff / globalMaxEcpmEff, 0, 1) : 0;
+      entry.normalizedRpsEff = globalMaxRps > 0 ? clamp_(entry.rps / globalMaxRps, 0, 1) : 0;
+      entry.performanceScore = average_([entry.normalizedScore, entry.normalizedEcpmEff, entry.normalizedRpsEff]);
+      entry.sessionShare = totalSessionsWindow > 0 ? entry.sessions / totalSessionsWindow : 0;
     });
+    var siteScores = urls.map(function (entry) { return entry.score || 0; }).filter(function (value) { return value > 0; });
+    siteRow.score = siteScores.length ? average_(siteScores) : 0;
   });
 
-  var prioritySlots = Math.max(0, Math.round(controls.urlMinRecipients || 0));
-  var globalPriorityKeys = {};
-  if (prioritySlots > 0) {
-    var priorityCandidates = [];
-    siteRows.forEach(function (siteRow) {
-      var urls = siteRow.urls || [];
-      urls.forEach(function (entry) {
-        priorityCandidates.push({
-          key: entry.key,
-          performanceScore: entry.performanceScore || 0,
-          score: entry.score || 0,
-          ecpmEff: entry.ecpmEff || 0,
-          rps: entry.rps || 0
-        });
-      });
-    });
-    priorityCandidates.sort(function (a, b) {
-      var perfDiff = (b.performanceScore || 0) - (a.performanceScore || 0);
-      if (Math.abs(perfDiff) > 1e-6) return perfDiff;
-      var scoreDiff = (b.score || 0) - (a.score || 0);
-      if (Math.abs(scoreDiff) > 1e-6) return scoreDiff;
-      var ecpmDiff = (b.ecpmEff || 0) - (a.ecpmEff || 0);
-      if (Math.abs(ecpmDiff) > 1e-6) return ecpmDiff;
-      var rpsDiff = (b.rps || 0) - (a.rps || 0);
-      if (Math.abs(rpsDiff) > 1e-6) return rpsDiff;
-      return 0;
-    });
-    for (var p = 0; p < prioritySlots && p < priorityCandidates.length; p++) {
-      globalPriorityKeys[priorityCandidates[p].key] = true;
-    }
-  }
-
-  var siteItems = siteRows.map(function (row) {
-    var stateRow = siteStateMap[row.site] || {};
-    var prevShare = stateRow.currentShare != null && stateRow.currentShare !== '' ? normalizeShareValue_(stateRow.currentShare) : null;
-    if (prevShare == null && stateRow.lastShare != null && stateRow.lastShare !== '') {
-      prevShare = normalizeShareValue_(stateRow.lastShare);
-    }
-    return {
-      key: row.site,
-      score: row.score,
-      state: stateRow,
-      prevShare: prevShare
-    };
-  });
-
-  var siteSoftmax = computeSoftmaxShares_(siteItems, controls.tau, 'score');
-  var minSiteShareBase = controls.totalSessions > 0 ? (controls.siteMinSessions / controls.totalSessions) : 0;
-  var minSiteShare = Math.max(controls.siteMinShare, minSiteShareBase);
-  var siteBounds = siteItems.map(function (item) {
-    var minBound = clamp_(minSiteShare, 0, 1);
-    var maxBound = clamp_(controls.siteMaxShare, minBound, 1);
-    if (item.prevShare != null && item.prevShare > 0) {
-      minBound = Math.max(minBound, item.prevShare * (1 - controls.siteStep));
-      maxBound = Math.min(maxBound, item.prevShare * (1 + controls.siteStep));
-    }
-    minBound = clamp_(minBound, 0, 1);
-    maxBound = clamp_(maxBound, minBound, 1);
-    return {
-      key: item.key,
-      value: siteSoftmax[item.key] != null ? siteSoftmax[item.key] : 0,
-      minBound: minBound,
-      maxBound: maxBound,
-      prevShare: item.prevShare,
-      state: item.state
-    };
-  });
-  normalizeSharesWithBounds_(siteBounds);
-
-  var siteOutput = [];
-  var globalAggregates = [];
-  var defaultSite = '';
-  var bestShare = -1;
-
-  siteBounds.forEach(function (item) {
-    var siteRow = siteRows.find(function (row) { return row.site === item.key; });
-    if (!siteRow) return;
-    var siteState = item.state || {};
-    var siteCurrentShare = siteState.currentShare != null && siteState.currentShare !== '' ? normalizeShareValue_(siteState.currentShare) : 0;
-    var siteSuggestedShare = item.value;
-    var siteDeltaShare = siteSuggestedShare - siteCurrentShare;
-    var totalSessions = controls.totalSessions;
-    var siteCurrentSessions = siteCurrentShare * totalSessions;
-    var siteSuggestedSessions = siteSuggestedShare * totalSessions;
-    if (siteSuggestedShare > bestShare) {
-      bestShare = siteSuggestedShare;
-      defaultSite = siteRow.site;
-    }
-
-    siteRow.currentShare = siteCurrentShare;
-    siteRow.suggestedShare = siteSuggestedShare;
-    siteRow.deltaShare = siteDeltaShare;
-    siteRow.currentSessions = siteCurrentSessions;
-    siteRow.suggestedSessions = siteSuggestedSessions;
+  var allUrls = [];
+  var siteShareMap = {};
+  siteRows.forEach(function (siteRow) {
+    var siteState = siteStateMap[siteRow.site] || {};
+    var siteCurrentShare = normalizeShareValue_(siteState.currentShare);
+    var urlStates = urlStateMap[siteRow.site] || {};
+    var siteUrls = siteRow.urls || [];
+    siteRow.currentShare = siteCurrentShare || 0;
+    siteRow.currentSessions = siteRow.currentShare * totalSessionsWindow;
+    siteRow.suggestedShare = 0;
+    siteRow.suggestedSessions = 0;
+    siteRow.deltaShare = 0;
     siteRow.nextEvaluation = siteState.nextEvalHour || '';
     siteRow.lastChange = siteState.lastChangeHour || '';
-
-    var siteUrls = siteRow.urls || [];
-    var siteSessionsReference = Math.max(siteSuggestedSessions, siteCurrentSessions);
-    var minSeedShare = siteSessionsReference > 0 ? Math.max(controls.urlSeedPercent, controls.urlSeedSessions / siteSessionsReference) : controls.urlSeedPercent;
-    minSeedShare = clamp_(minSeedShare, 0, 1);
-
-    var promising = siteUrls.filter(function (entry) {
-      return entry.momentum > controls.momentumExploreThreshold && entry.coverageRatio >= controls.coverageExploreThreshold;
-    });
-    var exploit = siteUrls.slice().sort(function (a, b) { return (b.performanceScore || 0) - (a.performanceScore || 0); }).slice(0, Math.min(3, siteUrls.length));
-    var explore = siteRow.apostas ? promising : [];
-    if (siteRow.apostas && !explore.length) {
-      explore = siteUrls.slice().sort(function (a, b) { return a.rounds - b.rounds; }).slice(0, Math.min(3, siteUrls.length));
-    }
-
-    var baseShareMap = {};
-    if (!siteUrls.length) {
-      baseShareMap = {};
-    } else if (siteRow.apostas) {
-      var exploitMap = computeAdaptiveSoftmaxShares_(exploit, controls.tauLocal, 'ucbScore');
-      var exploreMap = explore.length ? computeAdaptiveSoftmaxShares_(explore, controls.tauLocal, 'ucbScore') : {};
-      siteUrls.forEach(function (entry) { baseShareMap[entry.key] = 0; });
-      if (exploit.length) {
-        exploit.forEach(function (entry) {
-          baseShareMap[entry.key] += controls.exploitPortion * (exploitMap[entry.key] || 0);
-        });
-      }
-      if (explore.length) {
-        explore.forEach(function (entry) {
-          baseShareMap[entry.key] += controls.explorePortion * (exploreMap[entry.key] || 0);
-        });
-      }
-      var baseTotal = 0;
-      siteUrls.forEach(function (entry) { baseTotal += baseShareMap[entry.key] || 0; });
-      if (baseTotal < 1 && exploit.length) {
-        var remaining = 1 - baseTotal;
-        exploit.forEach(function (entry) {
-          baseShareMap[entry.key] += remaining * (exploitMap[entry.key] || 0);
-        });
-      }
-      if (!exploit.length) {
-        baseShareMap = computeAdaptiveSoftmaxShares_(siteUrls, controls.tauLocal, 'ucbScore');
-      }
-    } else {
-      baseShareMap = computeAdaptiveSoftmaxShares_(siteUrls, controls.tauLocal, 'ucbScore');
-    }
-
-    var requiredKeys = {};
-    var priorityKeys = {};
-    var requiredCount = 0;
-    if (controls.urlRequireAll && siteUrls.length) {
-      requiredCount = siteUrls.length;
-    } else if (!globalLimitEnabled && prioritySlots === 0) {
-      requiredCount = Math.min(siteUrls.length, Math.max(0, controls.urlMinRecipients));
-    }
-    if (requiredCount > 0 && siteUrls.length) {
-      var priority = siteUrls.slice().sort(function (a, b) {
-        var perfDiff = (b.performanceScore || 0) - (a.performanceScore || 0);
-        if (Math.abs(perfDiff) > 1e-6) {
-          return perfDiff;
-        }
-        var bBase = baseShareMap[b.key] != null ? baseShareMap[b.key] : 0;
-        var aBase = baseShareMap[a.key] != null ? baseShareMap[a.key] : 0;
-        if (Math.abs(bBase - aBase) > 1e-6) {
-          return bBase - aBase;
-        }
-        return (b.score || 0) - (a.score || 0);
-      });
-      for (var r = 0; r < requiredCount && r < priority.length; r++) {
-        priorityKeys[priority[r].key] = true;
-        requiredKeys[priority[r].key] = true;
-      }
-    }
     siteUrls.forEach(function (entry) {
-      if (globalPriorityKeys[entry.key]) {
-        priorityKeys[entry.key] = true;
-        requiredKeys[entry.key] = true;
-      }
-    });
-    siteUrls.forEach(function (entry) {
-      var statusValue = String((entry.state && entry.state.status) || '').toLowerCase();
-      if (statusValue === 'controle') {
-        requiredKeys[entry.key] = true;
-      }
-    });
-
-    var urlItems = siteUrls.map(function (entry) {
-      var stateEntry = entry.state || {};
-      var prevShare = stateEntry.currentShare != null && stateEntry.currentShare !== '' ? normalizeShareValue_(stateEntry.currentShare) : null;
-      if (prevShare == null && stateEntry.lastShare != null && stateEntry.lastShare !== '') {
-        prevShare = normalizeShareValue_(stateEntry.lastShare);
-      }
-      var isRequired = !!requiredKeys[entry.key];
-      var isPriority = !!priorityKeys[entry.key];
-      entry.isPriority = isPriority;
-      var minBound = isRequired ? minSeedShare : 0;
-      if (String(stateEntry.status || '').toLowerCase() === 'controle') {
-        minBound = Math.max(minBound, controls.controlReserve);
-      }
-      var maxBound = controls.urlMaxShare;
-      if (prevShare != null && prevShare > 0) {
-        minBound = Math.max(minBound, prevShare * (1 - controls.urlStep));
-        maxBound = Math.min(maxBound, prevShare * (1 + controls.urlStep));
-      }
-      minBound = clamp_(minBound, 0, 1);
-      maxBound = clamp_(maxBound, minBound, 1);
-      return {
-        key: entry.key,
-        value: baseShareMap[entry.key] != null ? baseShareMap[entry.key] : (1 / Math.max(1, siteUrls.length)),
-        minBound: minBound,
-        maxBound: maxBound,
-        prevShare: prevShare,
-        entry: entry,
-        state: stateEntry,
-        required: isRequired,
-        priority: isPriority
-      };
-    });
-
-    var desiredPriorityShare = clamp_(controls.urlPriorityShare != null ? controls.urlPriorityShare : 0, 0, 1);
-    var priorityItems = urlItems.filter(function (item) { return item.priority; });
-    var complementaryItems = urlItems.filter(function (item) { return !item.priority; });
-    if (priorityItems.length && (desiredPriorityShare > 0 || !complementaryItems.length)) {
-      var allocationPriorityShare = complementaryItems.length ? desiredPriorityShare : 1;
-      var priorityWeight = priorityItems.reduce(function (acc, item) {
-        return acc + Math.max(0, item.entry.performanceScore || 0);
-      }, 0);
-      if (priorityWeight <= 0) {
-        priorityWeight = priorityItems.length;
-      }
-      priorityItems.forEach(function (item) {
-        var weight = Math.max(0, item.entry.performanceScore || 0);
-        if (priorityWeight <= 0) {
-          item.value = allocationPriorityShare / priorityItems.length;
-        } else {
-          item.value = allocationPriorityShare * (weight > 0 ? weight / priorityWeight : 1 / priorityItems.length);
-        }
-      });
-      var remainingShare = Math.max(0, 1 - allocationPriorityShare);
-      if (complementaryItems.length) {
-        if (remainingShare <= 0) {
-          complementaryItems.forEach(function (item) { item.value = 0; });
-        } else {
-          var complementaryWeight = complementaryItems.reduce(function (acc, item) {
-            return acc + Math.max(0, item.entry.performanceScore || 0);
-          }, 0);
-          if (complementaryWeight <= 0) {
-            complementaryWeight = complementaryItems.length;
-          }
-          complementaryItems.forEach(function (item) {
-            var weight = Math.max(0, item.entry.performanceScore || 0);
-            if (complementaryWeight <= 0) {
-              item.value = remainingShare / complementaryItems.length;
-            } else {
-              item.value = remainingShare * (weight > 0 ? weight / complementaryWeight : 1 / complementaryItems.length);
-            }
-          });
-        }
-      }
-    }
-
-    normalizeSharesWithBounds_(urlItems);
-
-    var siteUrlRows = urlItems.map(function (item) {
-      var entry = item.entry;
-      var stateEntry = item.state || {};
-      var urlCurrentShare = stateEntry.currentShare != null && stateEntry.currentShare !== '' ? normalizeShareValue_(stateEntry.currentShare) : 0;
-      var urlSuggestedShare = item.value;
-      var urlDeltaShare = urlSuggestedShare - urlCurrentShare;
-      var currentSessions = urlCurrentShare * siteCurrentSessions;
-      var suggestedSessions = urlSuggestedShare * siteSuggestedSessions;
-      var currentGlobalShare = urlCurrentShare * siteCurrentShare;
-      var suggestedGlobalShare = urlSuggestedShare * siteSuggestedShare;
-      var deltaGlobalShare = suggestedGlobalShare - currentGlobalShare;
-      var status = stateEntry.status || (entry.rounds <= 1 ? 'seed' : 'ok');
-      return {
+      var stateEntry = urlStates[entry.key] || {};
+      var urlCurrentShare = normalizeShareValue_(stateEntry.currentShare);
+      var urlRow = {
         site: siteRow.site,
         url: entry.url,
         key: entry.key,
@@ -1594,258 +1306,417 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
         coverage: entry.coverage,
         ecpmEff: entry.ecpmEff,
         momentum: entry.momentum,
-        rounds: entry.rounds,
         score: entry.score,
-        ucb: entry.ucbScore,
         performanceScore: entry.performanceScore,
         performanceNormalizedScore: entry.normalizedScore,
         performanceNormalizedEcpm: entry.normalizedEcpmEff,
         performanceNormalizedRps: entry.normalizedRpsEff,
-        explorationBonus: entry.explorationBonus,
-        weight: entry.weight,
-        ecpmScore: entry.ecpmScore,
-        siteEcpmScore: entry.siteEcpmScore,
+        sessionShare: entry.sessionShare,
         baseScore: entry.baseScore,
+        coverageFactor: entry.coverageFactor,
         momentumFactor: entry.momentumFactor,
-        currentShare: urlCurrentShare,
-        suggestedShare: urlSuggestedShare,
-        deltaShare: urlDeltaShare,
-        status: status,
+        status: stateEntry.status || (entry.sessions > 0 ? 'ok' : 'seed'),
+        rounds: stateEntry.rounds || 0,
         lastChange: stateEntry.lastChangeHour || '',
         nextEval: stateEntry.nextEvalHour || '',
-        currentSessions: currentSessions,
-        suggestedSessions: suggestedSessions,
-        currentGlobalShare: currentGlobalShare,
-        suggestedGlobalShare: suggestedGlobalShare,
-        deltaGlobalShare: deltaGlobalShare,
-        guaranteed: !!item.required,
-        limited: false,
-        priority: !!item.priority,
+        currentShare: urlCurrentShare || 0,
+        currentGlobalShare: (urlCurrentShare || 0) * (siteRow.currentShare || 0),
+        siteCurrentShare: siteRow.currentShare || 0,
         siteEcpmEff: siteRow.ecpmEff,
         siteCoverage: siteRow.coverage,
-        siteMode: siteRow.apostas ? 'Apostas' : 'Normal',
         siteMomentum: siteRow.momentum,
-        siteScore: siteRow.score
+        siteScore: siteRow.score,
+        bet: false,
+        betShare: 0,
+        priority: false,
+        active: false,
+        guaranteed: false,
+        limited: false
       };
+      allUrls.push(urlRow);
     });
-
-    urlsBySite[siteRow.site] = siteUrlRows;
-    Array.prototype.push.apply(globalAggregates, siteUrlRows);
   });
 
-  var requestedRecipients = Math.max(0, Math.round(controls.urlTargetRecipients || 0));
-  var targetRecipients = requestedRecipients;
-  var limitApplied = false;
-  if (!controls.urlRequireAll && targetRecipients > 0 && globalAggregates.length > targetRecipients) {
-    limitApplied = true;
-    var selectedKeys = {};
-    globalAggregates.forEach(function (row) {
-      if (row.guaranteed) {
-        selectedKeys[row.key] = true;
-      }
-    });
-    var sortedForSelection = globalAggregates.slice().sort(function (a, b) {
-      var shareDiff = (b.suggestedGlobalShare || 0) - (a.suggestedGlobalShare || 0);
-      if (Math.abs(shareDiff) > 1e-6) return shareDiff;
-      var priorityDiff = (b.priority ? 1 : 0) - (a.priority ? 1 : 0);
-      if (priorityDiff !== 0) return priorityDiff;
-      var perfDiff = (b.performanceScore || 0) - (a.performanceScore || 0);
-      if (Math.abs(perfDiff) > 1e-6) return perfDiff;
-      return (b.score || 0) - (a.score || 0);
-    });
-    var selectedCount = Object.keys(selectedKeys).length;
-    if (targetRecipients > 0 && selectedCount > targetRecipients) {
-      targetRecipients = selectedCount;
-    }
-    for (var s = 0; s < sortedForSelection.length && selectedCount < targetRecipients; s++) {
-      var candidate = sortedForSelection[s];
-      if (!selectedKeys[candidate.key]) {
-        selectedKeys[candidate.key] = true;
-        selectedCount++;
-      }
-    }
-    Object.keys(urlsBySite).forEach(function (siteKey) {
-      var siteRowsList = urlsBySite[siteKey] || [];
-      if (!siteRowsList.length) return;
-      var hasSelected = siteRowsList.some(function (row) { return selectedKeys[row.key]; });
-      if (!hasSelected) {
-        var bestRow = siteRowsList.slice().sort(function (a, b) {
-          var shareDiff = (b.suggestedGlobalShare || 0) - (a.suggestedGlobalShare || 0);
-          if (Math.abs(shareDiff) > 1e-6) return shareDiff;
-          var priorityDiff = (b.priority ? 1 : 0) - (a.priority ? 1 : 0);
-          if (priorityDiff !== 0) return priorityDiff;
-          var perfDiff = (b.performanceScore || 0) - (a.performanceScore || 0);
-          if (Math.abs(perfDiff) > 1e-6) return perfDiff;
-          return (b.score || 0) - (a.score || 0);
-        })[0];
-        if (bestRow && selectedCount < targetRecipients) {
-          selectedKeys[bestRow.key] = true;
-          selectedCount++;
-        }
-      }
-    });
-
-    siteRows.forEach(function (siteRow) {
-      var siteKey = siteRow.site;
-      var siteUrlsList = urlsBySite[siteKey] || [];
-      if (!siteUrlsList.length) return;
-      var selectedRows = [];
-      var sumSelected = 0;
-      siteUrlsList.forEach(function (row) {
-        if (selectedKeys[row.key]) {
-          selectedRows.push(row);
-          sumSelected += row.suggestedShare;
-        }
-      });
-      if (!selectedRows.length) {
-        siteUrlsList.forEach(function (row) {
-          row.limited = true;
-          row.suggestedShare = 0;
-          row.suggestedSessions = 0;
-          row.suggestedGlobalShare = 0;
-          row.deltaShare = 0 - (row.currentShare || 0);
-          row.deltaGlobalShare = 0 - (row.currentGlobalShare || 0);
-        });
-        siteRow.suggestedShare = 0;
-        siteRow.suggestedSessions = 0;
-        siteRow.deltaShare = 0 - (siteRow.currentShare || 0);
-        return;
-      }
-      if (sumSelected <= 0 && selectedRows.length) {
-        var equalShare = 1 / selectedRows.length;
-        selectedRows.forEach(function (row) {
-          row.suggestedShare = equalShare;
-        });
-        sumSelected = 1;
-      }
-      var siteSuggestedShare = siteRow.suggestedShare || 0;
-      var siteSuggestedSessions = siteRow.suggestedSessions || 0;
-      siteUrlsList.forEach(function (row) {
-        if (!selectedKeys[row.key]) {
-          row.limited = true;
-          row.suggestedShare = 0;
-          row.suggestedSessions = 0;
-          row.suggestedGlobalShare = 0;
-          row.deltaShare = 0 - row.currentShare;
-          row.deltaGlobalShare = 0 - row.currentGlobalShare;
-        } else {
-          var normalizedShare = row.suggestedShare / sumSelected;
-          row.limited = false;
-          row.suggestedShare = normalizedShare;
-          row.suggestedSessions = normalizedShare * siteSuggestedSessions;
-          row.suggestedGlobalShare = normalizedShare * siteSuggestedShare;
-          var currentShare = row.currentShare || 0;
-          var currentGlobal = row.currentGlobalShare || 0;
-          row.deltaShare = normalizedShare - currentShare;
-          row.deltaGlobalShare = row.suggestedGlobalShare - currentGlobal;
-        }
-      });
-    });
-  }
-
-  var activeSiteShare = 0;
-  siteRows.forEach(function (siteRow) {
-    activeSiteShare += siteRow.suggestedShare || 0;
-  });
-  if (activeSiteShare > 0 && Math.abs(activeSiteShare - 1) > 1e-6) {
-    var siteScale = 1 / activeSiteShare;
-    siteRows.forEach(function (siteRow) {
-      var originalSuggested = siteRow.suggestedShare || 0;
-      if (originalSuggested <= 0) {
-        siteRow.suggestedShare = 0;
-        siteRow.suggestedSessions = 0;
-        siteRow.deltaShare = 0 - (siteRow.currentShare || 0);
-        return;
-      }
-      var scaledShare = clamp_(originalSuggested * siteScale, 0, 1);
-      siteRow.suggestedShare = scaledShare;
-      siteRow.suggestedSessions = scaledShare * controls.totalSessions;
-      siteRow.deltaShare = scaledShare - (siteRow.currentShare || 0);
-      var siteUrlsList = urlsBySite[siteRow.site] || [];
-      siteUrlsList.forEach(function (row) {
-        var normalizedShare = row.suggestedShare || 0;
-        var newSuggestedSessions = normalizedShare * siteRow.suggestedSessions;
-        var newGlobalShare = normalizedShare * siteRow.suggestedShare;
-        row.suggestedSessions = newSuggestedSessions;
-        row.deltaGlobalShare = newGlobalShare - (row.currentGlobalShare || 0);
-        row.suggestedGlobalShare = newGlobalShare;
-      });
-    });
-  }
-
-  var siteOutput = siteBounds.map(function (item) {
-    var row = siteRows.find(function (siteRow) { return siteRow.site === item.key; });
-    if (!row) return null;
+  if (!allUrls.length) {
     return {
-      site: row.site,
-      rps: row.rps,
-      ecpm: row.ecpm,
-      coverage: row.coverage,
-      ecpmEff: row.ecpmEff,
-      momentum: row.momentum,
-      confidence: row.confidence,
-      score: row.score,
-      currentShare: row.currentShare,
-      suggestedShare: row.suggestedShare,
-      deltaShare: row.deltaShare,
-      mode: row.apostas ? 'Apostas' : 'Normal',
-      nextEvaluation: row.nextEvaluation || '',
-      lastChange: row.lastChange || '',
-      currentSessions: row.currentSessions,
-      suggestedSessions: row.suggestedSessions
+      controls: controls,
+      sites: [],
+      urlsBySite: {},
+      selectedSite: '',
+      latestHour: hoursInfo && hoursInfo.latestHourLabel ? hoursInfo.latestHourLabel : '',
+      totalSessions: controls.totalSessions,
+      hours: windowHours.map(function (hour) { return hour.label; }),
+      globalUrls: {
+        entries: [],
+        all: [],
+        averageShare: 0,
+        activeCount: 0,
+        totalCount: 0,
+        targetRecipients: 0,
+        limitApplied: false,
+        priorityShareTarget: 0,
+        priorityCount: 0,
+        priorityActive: 0,
+        priorityShareActual: 0,
+        betMode: false,
+        betShareActual: 0,
+        betRecipients: 0
+      }
     };
-  }).filter(function (row) { return !!row; });
-
-  siteOutput.sort(function (a, b) { return b.suggestedShare - a.suggestedShare; });
-  if (!defaultSite && siteOutput.length) {
-    defaultSite = siteOutput[0].site;
   }
 
-  var siteContextMap = {};
-  siteRows.forEach(function (row) {
-    siteContextMap[row.site] = {
-      ecpmEff: row.ecpmEff,
-      coverage: row.coverage,
-      momentum: row.momentum,
-      mode: row.apostas ? 'Apostas' : 'Normal',
-      score: row.score
-    };
+  var referenceRows = allUrls.filter(function (row) { return (row.sessionShare || 0) >= 0.01; });
+  if (!referenceRows.length) {
+    referenceRows = allUrls.slice();
+  }
+  var referencePerformance = average_(referenceRows.map(function (row) { return row.performanceScore || 0; }));
+
+  function compareByPerformance(a, b) {
+    var perfDiff = (b.performanceScore || 0) - (a.performanceScore || 0);
+    if (Math.abs(perfDiff) > 1e-6) return perfDiff;
+    var rpsDiff = (b.rps || 0) - (a.rps || 0);
+    if (Math.abs(rpsDiff) > 1e-6) return rpsDiff;
+    var ecpmDiff = (b.ecpmEff || 0) - (a.ecpmEff || 0);
+    if (Math.abs(ecpmDiff) > 1e-6) return ecpmDiff;
+    return (b.sessions || 0) - (a.sessions || 0);
+  }
+
+  var sortedUrls = allUrls.slice().sort(compareByPerformance);
+
+  var betModeActive = bestSiteRps <= controls.modeThresholdRps;
+  var controlReserve = clamp_(controls.controlReserve != null ? controls.controlReserve : 0, 0, 1);
+  var controlPortion = betModeActive ? controlReserve : 1;
+  var betShare = betModeActive ? Math.max(0, 1 - controlPortion) : 0;
+  var betMinShare = clamp_(controls.betMinShare != null ? controls.betMinShare : 0, 0, 1);
+  var betCandidates = [];
+  if (betModeActive) {
+    betCandidates = allUrls.filter(function (row) {
+      return (row.sessionShare || 0) < 0.01 && (row.performanceScore || 0) > referencePerformance;
+    }).sort(compareByPerformance);
+    if (!betCandidates.length) {
+      controlPortion = 1;
+      betShare = 0;
+      betModeActive = false;
+    }
+  }
+
+  var betTargets = [];
+  if (betShare > 0 && betCandidates.length) {
+    var maxRecipients = betMinShare > 0 ? Math.floor(betShare / betMinShare) : betCandidates.length;
+    if (maxRecipients === 0 && betShare > 0) {
+      maxRecipients = 1;
+    }
+    if (maxRecipients > betCandidates.length) {
+      maxRecipients = betCandidates.length;
+    }
+    betTargets = betCandidates.slice(0, maxRecipients);
+  } else {
+    betShare = 0;
+  }
+
+  var minShare = clamp_(controls.urlSeedPercent || 0, 0, 1);
+  var priorityCount = Math.min(Math.max(0, Math.round(controls.urlMinRecipients || 0)), sortedUrls.length);
+  var targetPriorityTotal = priorityCount > 0 ? clamp_(controls.urlPriorityShare || 0, 0, 1) : 0;
+
+  if (priorityCount > 0 && targetPriorityTotal > controlPortion && betShare > 0) {
+    var borrowForPriority = Math.min(targetPriorityTotal - controlPortion, betShare);
+    if (borrowForPriority > 0) {
+      controlPortion += borrowForPriority;
+      betShare -= borrowForPriority;
+    }
+  }
+  var priorityKeys = {};
+  for (var p = 0; p < priorityCount; p++) {
+    priorityKeys[sortedUrls[p].key] = true;
+  }
+
+  var limit = Math.max(0, Math.round(controls.urlTargetRecipients || 0));
+  if (priorityCount > 0 && limit > 0 && limit < priorityCount) {
+    limit = priorityCount;
+  }
+  var guaranteeAll = !!controls.urlRequireAll;
+  var activeMap = {};
+  var activeSet = [];
+  if (guaranteeAll || limit === 0) {
+    sortedUrls.forEach(function (row) {
+      if (!activeMap[row.key]) {
+        activeMap[row.key] = true;
+        activeSet.push(row);
+      }
+    });
+  } else {
+    sortedUrls.forEach(function (row) {
+      if (priorityKeys[row.key] && !activeMap[row.key]) {
+        activeMap[row.key] = true;
+        activeSet.push(row);
+      }
+    });
+    sortedUrls.forEach(function (row) {
+      if (activeSet.length >= limit) return;
+      if (!activeMap[row.key]) {
+        activeMap[row.key] = true;
+        activeSet.push(row);
+      }
+    });
+  }
+  var limitApplied = !guaranteeAll && limit > 0 && activeSet.length < sortedUrls.length;
+  var activeKeys = {};
+  activeSet.forEach(function (row) { activeKeys[row.key] = true; });
+  if (!activeSet.length) {
+    activeSet = sortedUrls.slice();
+    activeSet.forEach(function (row) { activeKeys[row.key] = true; });
+  }
+
+  var baseCount = activeSet.length;
+  var maxAssignable = controlPortion + betShare;
+  if (baseCount > 0 && minShare * baseCount > maxAssignable) {
+    minShare = maxAssignable / baseCount;
+  }
+  var nonPriorityRows = activeSet.filter(function (row) { return !priorityKeys[row.key]; });
+  var nonPriorityCount = nonPriorityRows.length;
+  var minPriorityTotal = priorityCount * minShare;
+  var priorityAllocation = 0;
+  var remainingControl = 0;
+  function refreshPriorityAllocation() {
+    priorityAllocation = priorityCount > 0 ? Math.min(controlPortion, Math.max(targetPriorityTotal, minPriorityTotal)) : 0;
+    remainingControl = Math.max(0, controlPortion - priorityAllocation);
+    if (nonPriorityCount === 0) {
+      priorityAllocation = controlPortion;
+      remainingControl = 0;
+    }
+  }
+  refreshPriorityAllocation();
+  if (priorityCount > 0 && priorityAllocation < minPriorityTotal && betShare > 0) {
+    var borrowForMinimum = Math.min(minPriorityTotal - priorityAllocation, betShare);
+    if (borrowForMinimum > 0) {
+      controlPortion += borrowForMinimum;
+      betShare -= borrowForMinimum;
+      refreshPriorityAllocation();
+    }
+  }
+  var requiredNonPriority = nonPriorityCount * minShare;
+  function enforceNonPriorityFloor() {
+    if (requiredNonPriority > remainingControl) {
+      if (priorityCount > 0) {
+        var maxPriorityAllocation = Math.max(0, controlPortion - requiredNonPriority);
+        if (priorityAllocation > maxPriorityAllocation) {
+          priorityAllocation = Math.max(minPriorityTotal, maxPriorityAllocation);
+          remainingControl = Math.max(0, controlPortion - priorityAllocation);
+        }
+      } else {
+        remainingControl = controlPortion;
+      }
+    }
+  }
+  while (requiredNonPriority > remainingControl && betShare > 0) {
+    var borrow = Math.min(requiredNonPriority - remainingControl, betShare);
+    betShare -= borrow;
+    controlPortion += borrow;
+    refreshPriorityAllocation();
+    requiredNonPriority = nonPriorityCount * minShare;
+  }
+  enforceNonPriorityFloor();
+
+  if (betShare > 0 && betMinShare > 0 && betShare < betMinShare) {
+    controlPortion = Math.min(1, controlPortion + betShare);
+    betShare = 0;
+    betTargets = [];
+    betModeActive = false;
+    refreshPriorityAllocation();
+    requiredNonPriority = nonPriorityCount * minShare;
+  }
+  enforceNonPriorityFloor();
+
+  if (betShare <= 0) {
+    betShare = 0;
+    betTargets = [];
+    betModeActive = false;
+  } else if (betTargets.length) {
+    var betLimit = betMinShare > 0 ? Math.floor(betShare / betMinShare) : betTargets.length;
+    if (betLimit === 0 && betShare > 0) {
+      betLimit = 1;
+    }
+    if (betLimit < betTargets.length) {
+      betTargets = betTargets.slice(0, betLimit);
+    }
+  }
+
+  var allocationMap = {};
+  var betAllocationMap = {};
+
+  function allocatePortion(rows, totalShare, minEach, map, tracker) {
+    totalShare = Math.max(0, totalShare);
+    if (!rows || !rows.length || totalShare <= 0) return;
+    var perItem = Math.max(0, minEach || 0);
+    var baseline = perItem * rows.length;
+    if (baseline > totalShare) {
+      perItem = totalShare / rows.length;
+      baseline = perItem * rows.length;
+    }
+    var leftover = totalShare - baseline;
+    var weights = rows.map(function (row) { return Math.max(row.performanceScore || 0, 0); });
+    var weightSum = weights.reduce(function (acc, val) { return acc + val; }, 0);
+    rows.forEach(function (row, index) {
+      var portion = perItem;
+      if (leftover > 0) {
+        if (weightSum > 0) {
+          portion += leftover * (weights[index] / weightSum);
+        } else {
+          portion += leftover / rows.length;
+        }
+      }
+      map[row.key] = (map[row.key] || 0) + portion;
+      if (tracker) {
+        tracker[row.key] = (tracker[row.key] || 0) + portion;
+      }
+    });
+  }
+
+  var priorityRows = activeSet.filter(function (row) { return priorityKeys[row.key]; });
+  if (priorityAllocation > 0 && priorityRows.length) {
+    allocatePortion(priorityRows, priorityAllocation, minShare, allocationMap);
+  } else if (priorityAllocation > 0) {
+    remainingControl += priorityAllocation;
+  }
+  if (remainingControl > 0 && nonPriorityRows.length) {
+    allocatePortion(nonPriorityRows, remainingControl, minShare, allocationMap);
+  }
+
+  if (betShare > 0 && betTargets.length) {
+    allocatePortion(betTargets, betShare, betMinShare, allocationMap, betAllocationMap);
+  }
+
+  var totalAllocated = 0;
+  allUrls.forEach(function (row) {
+    totalAllocated += allocationMap[row.key] || 0;
+  });
+  if (totalAllocated <= 0 && allUrls.length) {
+    var equal = 1 / allUrls.length;
+    allUrls.forEach(function (row) {
+      allocationMap[row.key] = equal;
+    });
+    totalAllocated = 1;
+  }
+  if (totalAllocated > 0 && Math.abs(totalAllocated - 1) > 1e-6) {
+    var scale = 1 / totalAllocated;
+    Object.keys(allocationMap).forEach(function (key) {
+      allocationMap[key] = (allocationMap[key] || 0) * scale;
+    });
+    Object.keys(betAllocationMap).forEach(function (key) {
+      betAllocationMap[key] = (betAllocationMap[key] || 0) * scale;
+    });
+  }
+
+  var urlsBySite = {};
+  var globalAggregates = [];
+  allUrls.forEach(function (row) {
+    var totalShare = allocationMap[row.key] || 0;
+    var betPortion = betAllocationMap[row.key] || 0;
+    row.betShare = betPortion;
+    row.bet = betPortion > 0;
+    row.priority = !!priorityKeys[row.key];
+    row.active = !!activeKeys[row.key] || row.bet;
+    row.guaranteed = row.priority || guaranteeAll;
+    row.limited = !row.active && !row.bet && !guaranteeAll;
+    row.suggestedGlobalShare = totalShare;
+    globalAggregates.push(row);
+    siteShareMap[row.site] = (siteShareMap[row.site] || 0) + totalShare;
+  });
+
+  var bestShare = -1;
+  var defaultSite = '';
+  var siteOutput = [];
+  siteRows.forEach(function (siteRow) {
+    var siteShare = siteShareMap[siteRow.site] || 0;
+    siteRow.suggestedShare = siteShare;
+    siteRow.suggestedSessions = siteShare * totalSessionsWindow;
+    siteRow.deltaShare = siteShare - siteRow.currentShare;
+    siteRow.mode = betModeActive ? 'Apostas' : 'Normal';
+    if (siteShare > bestShare) {
+      bestShare = siteShare;
+      defaultSite = siteRow.site;
+    }
+    var siteCurrentSessions = siteRow.currentShare * totalSessionsWindow;
+    siteRow.currentSessions = siteCurrentSessions;
+    siteOutput.push({
+      site: siteRow.site,
+      rps: siteRow.rps,
+      ecpm: siteRow.ecpm,
+      coverage: siteRow.coverage,
+      ecpmEff: siteRow.ecpmEff,
+      momentum: siteRow.momentum,
+      confidence: siteRow.sessions > 0 ? siteRow.sessions / (siteRow.sessions + DISTRIBUTION_SCORE_SMOOTHING) : 0,
+      score: siteRow.score,
+      currentShare: siteRow.currentShare,
+      suggestedShare: siteShare,
+      deltaShare: siteRow.deltaShare,
+      mode: siteRow.mode,
+      nextEvaluation: siteRow.nextEvaluation,
+      lastChange: siteRow.lastChange,
+      currentSessions: siteCurrentSessions,
+      suggestedSessions: siteRow.suggestedSessions
+    });
+  });
+
+  globalAggregates.forEach(function (row) {
+    var siteShare = siteShareMap[row.site] || 0;
+    var siteCurrentShare = (siteStateMap[row.site] && normalizeShareValue_(siteStateMap[row.site].currentShare)) || 0;
+    var siteCurrentSessions = siteCurrentShare * totalSessionsWindow;
+    var siteSuggestedSessions = siteShare * totalSessionsWindow;
+    row.suggestedShare = siteShare > 0 ? row.suggestedGlobalShare / siteShare : 0;
+    row.deltaShare = row.suggestedShare - (row.currentShare || 0);
+    row.deltaGlobalShare = row.suggestedGlobalShare - (row.currentGlobalShare || 0);
+    row.currentSessions = (row.currentShare || 0) * siteCurrentSessions;
+    row.suggestedSessions = row.suggestedShare * siteSuggestedSessions;
+    if (!urlsBySite[row.site]) {
+      urlsBySite[row.site] = [];
+    }
+    urlsBySite[row.site].push(row);
   });
 
   var sortedGlobal = globalAggregates.slice().sort(function (a, b) {
     return (b.suggestedGlobalShare || 0) - (a.suggestedGlobalShare || 0);
   });
+
   var priorityShareAccum = 0;
   var priorityActiveCount = 0;
+  var betShareAccum = 0;
+  var betCount = 0;
   sortedGlobal.forEach(function (row, index) {
-    var siteCtx = siteContextMap[row.site] || {};
-    row.reason = describeUrlAllocationReason_(row, siteCtx, controls, index, sortedGlobal.length, limitApplied);
     if (row.priority && (row.suggestedGlobalShare || 0) > 0) {
       priorityActiveCount++;
       priorityShareAccum += row.suggestedGlobalShare || 0;
     }
+    if (row.betShare > 0) {
+      betCount++;
+      betShareAccum += row.betShare;
+    }
+    row.reason = describeUrlAllocationReason_(row, siteStateMap[row.site] || {}, controls, index, sortedGlobal.length, limitApplied, betModeActive);
   });
+
   var activeCount = sortedGlobal.filter(function (row) { return (row.suggestedGlobalShare || 0) > 0; }).length;
   var totalCount = sortedGlobal.length;
   var averageGlobalShare = activeCount ? 1 / activeCount : (totalCount ? 1 / totalCount : 0);
-  var displayEntries = sortedGlobal.filter(function (row) {
-    return (row.suggestedGlobalShare || 0) > 0;
-  });
+  var displayEntries = sortedGlobal.filter(function (row) { return (row.suggestedGlobalShare || 0) > 0; });
   if (!displayEntries.length) {
     displayEntries = sortedGlobal.slice();
   }
+
   var globalSummary = {
     entries: displayEntries,
     all: sortedGlobal,
     averageShare: averageGlobalShare,
     activeCount: activeCount,
     totalCount: totalCount,
-    targetRecipients: requestedRecipients,
+    targetRecipients: guaranteeAll ? 0 : limit,
     limitApplied: limitApplied,
-    priorityShareTarget: controls.urlPriorityShare || 0,
-    priorityCount: Math.max(0, Math.round(controls.urlMinRecipients || 0)),
+    priorityShareTarget: targetPriorityTotal,
+    priorityCount: priorityCount,
     priorityActive: priorityActiveCount,
-    priorityShareActual: priorityShareAccum
+    priorityShareActual: priorityShareAccum,
+    betMode: betModeActive,
+    betShareActual: betShareAccum,
+    betRecipients: betCount
   };
 
   return {
@@ -1854,7 +1725,7 @@ function buildDistributionPlan_(rows, hoursInfo, revshareMap, params) {
     urlsBySite: urlsBySite,
     selectedSite: defaultSite,
     latestHour: hoursInfo && hoursInfo.latestHourLabel ? hoursInfo.latestHourLabel : '',
-    totalSessions: controls.totalSessions,
+    totalSessions: totalSessionsWindow,
     hours: windowHours.map(function (hour) { return hour.label; }),
     globalUrls: globalSummary
   };
@@ -1878,13 +1749,15 @@ function selectMobTopBlock_(blocks) {
   return best;
 }
 
-function describeUrlAllocationReason_(row, siteCtx, controls, index, totalCount, limitApplied) {
+function describeUrlAllocationReason_(row, siteCtx, controls, index, totalCount, limitApplied, betModeActive) {
   var share = toNumber_(row && row.suggestedGlobalShare != null ? row.suggestedGlobalShare : 0);
   var delta = toNumber_(row && row.deltaGlobalShare != null ? row.deltaGlobalShare : 0);
   var parts = [];
 
   if (share <= 0) {
-    if ((row && row.limited) || limitApplied) {
+    if (row && row.bet) {
+      parts.push('URL ficou elegível para apostas, mas não recebeu tráfego nesta rodada.');
+    } else if ((row && row.limited) || limitApplied) {
       parts.push('Sem tráfego nesta rodada por causa do limite de URLs ativas.');
     } else {
       parts.push('Sem tráfego sugerido nesta rodada.');
@@ -1914,7 +1787,7 @@ function describeUrlAllocationReason_(row, siteCtx, controls, index, totalCount,
   if (row && row.priority) {
     var targetPriorityShare = controls && controls.urlPriorityShare != null ? controls.urlPriorityShare : 0;
     if (targetPriorityShare > 0) {
-      parts.push('No grupo prioritário (' + formatShareValue_(targetPriorityShare, 1) + ' do tráfego reservado).');
+      parts.push('No grupo prioritário (' + formatShareValue_(targetPriorityShare, 1) + ' do tráfego total).');
     } else {
       parts.push('No grupo prioritário definido manualmente.');
     }
@@ -1925,85 +1798,27 @@ function describeUrlAllocationReason_(row, siteCtx, controls, index, totalCount,
     }
   }
 
-  var scoreValue = toNumber_(row && row.score != null ? row.score : 0);
-  var baseScore = toNumber_(row && row.baseScore != null ? row.baseScore : 0);
-  var momentumFactor = toNumber_(row && row.momentumFactor != null ? row.momentumFactor : 1);
-  var weightValue = clamp_(toNumber_(row && row.weight != null ? row.weight : 0), 0, 1);
-  var complementWeight = clamp_(1 - weightValue, 0, 1);
-  var urlScoreComponent = toNumber_(row && row.ecpmScore != null ? row.ecpmScore : 0);
-  var siteScoreComponent = toNumber_(row && row.siteEcpmScore != null ? row.siteEcpmScore : 0);
-  if ((row && row.score != null) || (row && row.baseScore != null)) {
-    parts.push('Score ' + formatScoreValue_(scoreValue, 2) + ' (base ' + formatScoreValue_(baseScore, 2) + ' × momentum ' + formatScoreValue_(momentumFactor, 3) + ').');
-    parts.push('Base = ' + formatPercentDisplay_(weightValue * 100, 1) + ' da URL (' + formatScoreValue_(urlScoreComponent, 2) + ') + ' + formatPercentDisplay_(complementWeight * 100, 1) + ' do site (' + formatScoreValue_(siteScoreComponent, 2) + ').');
-  }
-  if (row && row.ucb != null) {
-    parts.push('UCB ' + formatScoreValue_(row.ucb, 2) + ' para exploração.');
+  if (row && row.bet) {
+    parts.push('Recebe ' + formatShareValue_(row.betShare || 0) + ' do bloco de apostas para acelerar ganho de sinal.');
+  } else if (betModeActive) {
+    parts.push('Mantém posição na reserva de controle durante o modo de apostas.');
   }
 
   if (row && row.performanceScore != null) {
     parts.push('Desempenho composto ' + formatShareValue_(row.performanceScore, 1) + ' (score ' + formatShareValue_(row.performanceNormalizedScore || 0, 1) + ', eCPM ef. ' + formatShareValue_(row.performanceNormalizedEcpm || 0, 1) + ', RPS ' + formatShareValue_(row.performanceNormalizedRps || 0, 1) + ').');
-    parts.push('Métricas base: score ' + formatScoreValue_(row.score, 2) + ', eCPM efetivo ' + formatCurrencyValue_(row.ecpmEff, 2) + ', RPS ' + formatCurrencyValue_(row.rps, 2) + '.');
   }
+  parts.push('Métricas base: score ' + formatScoreValue_(row && row.score != null ? row.score : 0, 2) + ', eCPM efetivo ' + formatCurrencyValue_(row && row.ecpmEff != null ? row.ecpmEff : 0, 2) + ', RPS ' + formatCurrencyValue_(row && row.rps != null ? row.rps : 0, 2) + '.');
 
   var rankText = 'Prioridade global #' + (index + 1) + ' de ' + totalCount + '.';
   parts.push(rankText);
 
-  if (siteCtx && siteCtx.mode === 'Apostas') {
-    parts.push('Site em modo Apostas (exploração controlada).');
-  }
-
-  var ecpmEff = toNumber_(row && row.ecpmEff != null ? row.ecpmEff : 0);
-  if (ecpmEff > 0) {
-    var siteEcpmEff = toNumber_(siteCtx && siteCtx.ecpmEff != null ? siteCtx.ecpmEff : 0);
-    var ecpmText = formatCurrencyValue_(ecpmEff, 2);
-    if (siteEcpmEff > 0) {
-      var diffPct = ((ecpmEff - siteEcpmEff) / siteEcpmEff) * 100;
-      if (diffPct > 5) {
-        parts.push('eCPM efetivo ' + ecpmText + ' (' + formatPercentDisplay_(diffPct, 0) + ' acima da média do site).');
-      } else if (diffPct < -5) {
-        parts.push('eCPM efetivo ' + ecpmText + ' (' + formatPercentDisplay_(Math.abs(diffPct), 0) + ' abaixo da média do site).');
-      } else {
-        parts.push('eCPM efetivo ' + ecpmText + ' alinhado com o site.');
-      }
-    } else {
-      parts.push('eCPM efetivo ' + ecpmText + '.');
-    }
-  }
-
-  var coverage = toNumber_(row && row.coverage != null ? row.coverage : 0);
-  if (coverage > 0) {
-    var target = toNumber_(controls && controls.coverageTarget != null ? controls.coverageTarget : 0) * 100;
-    if (target && coverage >= target) {
-      parts.push('Cobertura ' + formatPercentDisplay_(coverage, 1) + ' acima da meta.');
-    } else if (coverage >= 60) {
-      parts.push('Cobertura ' + formatPercentDisplay_(coverage, 1) + ' levemente abaixo da meta.');
-    } else {
-      parts.push('Cobertura baixa ' + formatPercentDisplay_(coverage, 1) + ', monitorar fill.');
-    }
-  }
-
-  var momentum = toNumber_(row && row.momentum != null ? row.momentum : 0);
-  if (momentum >= 0.1) {
-    parts.push('Momentum positivo ' + formatPercentDisplay_(momentum * 100, 0) + ' vs média das 2h anteriores.');
-  } else if (momentum <= -0.1) {
-    parts.push('Momentum negativo ' + formatPercentDisplay_(Math.abs(momentum) * 100, 0) + ' vs média das 2h anteriores.');
-  }
-
-  var rounds = Math.max(0, Math.round(toNumber_(row && row.rounds != null ? row.rounds : 0)));
-  if (rounds > 0) {
-    parts.push('Já avaliada em ' + rounds + ' ' + (rounds === 1 ? 'rodada' : 'rodadas') + '.');
-  } else {
-    parts.push('Em fase de seed para ganhar sinal.');
-  }
-
-  if (row && row.guaranteed) {
-    parts.push('Mantém tráfego mínimo garantido (' + (row.status || 'controle') + ').');
-  } else if (row && row.status) {
-    parts.push('Status: ' + row.status + '.');
+  if (row && row.status) {
+    parts.push('Status atual: ' + row.status + '.');
   }
 
   return parts.join(' ');
 }
+
 
 function formatShareValue_(share, decimals) {
   var dec = decimals != null ? decimals : 1;
@@ -2610,12 +2425,11 @@ function normalizeShareValue_(value) {
   return num;
 }
 
-function computeCoverageFactor_(ratio, controls) {
-  controls = controls || getDefaultDistributionControls_();
-  var target = controls.coverageTarget != null ? controls.coverageTarget : 0.75;
-  var penaltyFloor = controls.coveragePenaltyFloor != null ? controls.coveragePenaltyFloor : 0.5;
-  var cap = controls.coverageCap != null ? controls.coverageCap : 0.95;
-  var bonus = controls.coverageBonusFactor != null ? controls.coverageBonusFactor : 0.2;
+function computeCoverageFactor_(ratio) {
+  var target = DISTRIBUTION_COVERAGE_TARGET;
+  var penaltyFloor = DISTRIBUTION_COVERAGE_FLOOR;
+  var cap = DISTRIBUTION_COVERAGE_CAP;
+  var bonus = DISTRIBUTION_COVERAGE_BONUS;
   var value = Math.max(0, ratio || 0);
   if (value < target) {
     var factor = target ? value / target : 0;

@@ -2137,24 +2137,13 @@
 
         var params = (state.distribution && state.distribution.params) || distribution.controls || {};
         var fields = [
-          { key: 'totalSessions', label: 'Sessões alvo', type: 'number', step: 100, min: 1, decimals: 0 },
-          { key: 'tau', label: 'Temperatura global (τ)', type: 'number', step: 1, min: 1, decimals: 0 },
-          { key: 'tauLocal', label: 'Temperatura local (τ local)', type: 'number', step: 1, min: 1, decimals: 0 },
-          { key: 'reliabilityK', label: 'K de confiabilidade', type: 'number', step: 10, min: 0, decimals: 0 },
-          { key: 'ucbZ', label: 'Fator UCB (z)', type: 'number', step: 1, min: 0, decimals: 0 },
-          { key: 'siteMinShare', label: 'Share mínimo por site (%)', percent: true, step: 0.5, min: 0, decimals: 1 },
-          { key: 'siteMaxShare', label: 'Share máximo por site (%)', percent: true, step: 0.5, min: 0, decimals: 1 },
-          { key: 'siteStep', label: 'Passo máximo site (%)', percent: true, step: 1, min: 0, decimals: 1 },
-          { key: 'urlSeedPercent', label: 'Seed mínimo URL (%)', percent: true, step: 0.5, min: 0, decimals: 1 },
-          { key: 'urlSeedSessions', label: 'Seed mínimo URL (sessões)', type: 'number', step: 10, min: 0, decimals: 0 },
+          { key: 'urlSeedPercent', label: 'Share mínimo URL (%)', percent: true, step: 0.1, min: 0, decimals: 1 },
           { key: 'urlMinRecipients', label: 'URLs prioritárias', type: 'number', step: 1, min: 0, decimals: 0 },
           { key: 'urlPriorityShare', label: 'Share URLs prioritárias (%)', percent: true, step: 1, min: 0, decimals: 1 },
           { key: 'urlTargetRecipients', label: 'URLs ativas (limite)', type: 'number', step: 1, min: 0, decimals: 0 },
-          { key: 'urlMaxShare', label: 'Teto por URL (%)', percent: true, step: 0.5, min: 0, decimals: 1 },
-          { key: 'urlStep', label: 'Passo máximo URL (%)', percent: true, step: 1, min: 0, decimals: 1 },
           { key: 'modeThresholdRps', label: 'Limite RPS modo apostas ($)', type: 'number', step: 10, min: 0, decimals: 0 },
-          { key: 'modeThresholdCv', label: 'Limite CV modo apostas (%)', percent: true, step: 0.5, min: 0, decimals: 1 },
-          { key: 'controlReserve', label: 'Reserva controle (%)', percent: true, step: 0.5, min: 0, decimals: 1 }
+          { key: 'controlReserve', label: 'Reserva controle (%)', percent: true, step: 0.5, min: 0, decimals: 1 },
+          { key: 'betMinShare', label: 'Share mínimo por URL aposta (%)', percent: true, step: 0.5, min: 0, decimals: 1 }
         ];
 
         var grid = document.createElement('div');
@@ -2203,41 +2192,17 @@
         });
         requireLabel.appendChild(requireInput);
         var requireText = document.createElement('span');
-        requireText.textContent = 'Garantir seed mínimo para todas as URLs';
+        requireText.textContent = 'Garantir tráfego em todas as URLs';
         requireLabel.appendChild(requireText);
         toggleRow.appendChild(requireLabel);
         var toggleHint = document.createElement('p');
         toggleHint.className = 'text-xs text-slate-400';
-        toggleHint.textContent = 'Quando desativado, apenas as URLs prioritárias recebem o seed mínimo configurado.';
+        toggleHint.textContent = 'Quando desativado, apenas as URLs prioritárias recebem o tráfego mínimo configurado.';
         toggleRow.appendChild(toggleHint);
         card.appendChild(toggleRow);
 
-        var quickActions = document.createElement('div');
-        quickActions.className = 'flex flex-wrap items-center justify-between gap-3';
-        var actionsLeft = document.createElement('div');
-        actionsLeft.className = 'flex flex-wrap gap-2';
-        var actionButtons = [
-          { label: 'Seed 50', handler: function () { updateDistributionParam('urlSeedSessions', 50); } },
-          { label: 'Seed 100', handler: function () { updateDistributionParam('urlSeedSessions', 100); } },
-          { label: 'Seed 200', handler: function () { updateDistributionParam('urlSeedSessions', 200); } },
-          { label: 'Teto 35%', handler: function () { updateDistributionParam('urlMaxShare', 0.35); } },
-          { label: 'Teto 25%', handler: function () { updateDistributionParam('urlMaxShare', 0.25); } },
-          { label: 'Desligar apostas', handler: function () { updateDistributionParam('exploitPortion', 1); updateDistributionParam('explorePortion', 0); } }
-        ];
-        actionButtons.forEach(function (action) {
-          var btn = document.createElement('button');
-          btn.type = 'button';
-          btn.className = 'px-3 py-1.5 rounded-lg border border-slate-600/60 text-xs text-slate-200 hover:bg-slate-800/70 transition-colors';
-          btn.textContent = action.label;
-          btn.addEventListener('click', function (ev) {
-            ev.preventDefault();
-            action.handler();
-            renderAnalysis();
-          });
-          actionsLeft.appendChild(btn);
-        });
-        quickActions.appendChild(actionsLeft);
-
+        var buttonsRow = document.createElement('div');
+        buttonsRow.className = 'flex flex-wrap items-center justify-between gap-3';
         var applyButton = document.createElement('button');
         applyButton.type = 'button';
         applyButton.id = 'btn-distribuicao-aplicar';
@@ -2247,7 +2212,7 @@
           ev.preventDefault();
           recalcularDistribuicao();
         });
-        quickActions.appendChild(applyButton);
+        buttonsRow.appendChild(applyButton);
 
         var syncButton = document.createElement('button');
         syncButton.type = 'button';
@@ -2274,12 +2239,12 @@
             sincronizarDistribuicao();
           });
         }
-        quickActions.appendChild(syncButton);
-        card.appendChild(quickActions);
+        buttonsRow.appendChild(syncButton);
+        card.appendChild(buttonsRow);
 
         var summary = document.createElement('p');
         summary.className = 'text-xs text-slate-400';
-        summary.textContent = 'Plano atual considera ' + formatNumber(distribution.totalSessions || params.totalSessions || 0) + ' sessões alvo.';
+        summary.textContent = 'Plano atual considera ' + formatNumber(distribution.totalSessions || 0) + ' sessões observadas na janela selecionada.';
         card.appendChild(summary);
 
         return card;
@@ -2468,6 +2433,12 @@
           priorityShare.textContent = 'Tráfego prioritário: ' + formatShare(summary.priorityShareActual || 0);
           infoWrap.appendChild(priorityShare);
         }
+        if (summary.betMode) {
+          var betInfo = document.createElement('span');
+          var betShare = formatShare(summary.betShareActual || 0);
+          betInfo.textContent = 'Modo apostas ativo • tráfego: ' + betShare + ' (' + (summary.betRecipients || 0) + ' URLs)';
+          infoWrap.appendChild(betInfo);
+        }
         if (!summary.limitApplied && summary.targetRecipients) {
           var targetInfo = document.createElement('span');
           targetInfo.textContent = 'Meta de URLs: ' + summary.targetRecipients;
@@ -2537,6 +2508,9 @@
           if (row.priority) {
             meta.innerHTML += '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-purple-500/15 text-purple-200 border border-purple-400/40">Prioritária</span>';
           }
+          if (row.bet) {
+            meta.innerHTML += '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-amber-500/15 text-amber-200 border border-amber-400/40">Aposta</span>';
+          }
           if (row.guaranteed) {
             meta.innerHTML += '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-indigo-500/15 text-indigo-200 border border-indigo-400/40">Garantido</span>';
           }
@@ -2561,29 +2535,6 @@
             perfBreakdown.textContent = 'Score ' + formatShare(row.performanceNormalizedScore || 0) + ' • eCPM ' + formatShare(row.performanceNormalizedEcpm || 0) + ' • RPS ' + formatShare(row.performanceNormalizedRps || 0);
             perfBox.appendChild(perfBreakdown);
             item.appendChild(perfBox);
-          }
-          if (row.score != null || row.baseScore != null) {
-            var scoreWeight = Math.max(0, Math.min(1, Number(row.weight || 0)));
-            var complementWeight = Math.max(0, Math.min(1, 1 - scoreWeight));
-            var scoreValue = row.score != null ? row.score : 0;
-            var ucbValue = row.ucb != null ? row.ucb : null;
-            var baseValue = row.baseScore != null ? row.baseScore : 0;
-            var urlScoreComponent = row.ecpmScore != null ? row.ecpmScore : 0;
-            var siteScoreComponent = row.siteEcpmScore != null ? row.siteEcpmScore : 0;
-            var momentumFactor = row.momentumFactor != null ? row.momentumFactor : 1;
-            var scoreBox = document.createElement('div');
-            scoreBox.className = 'w-full rounded-lg bg-slate-900/60 border border-slate-700/50 p-3 space-y-1 text-xs leading-snug text-slate-300';
-            var scoreLine = document.createElement('div');
-            scoreLine.className = 'text-slate-100 font-semibold';
-            scoreLine.textContent = 'Score: ' + formatScore(scoreValue) + ' • UCB: ' + (ucbValue !== null ? formatScore(ucbValue) : '—');
-            scoreBox.appendChild(scoreLine);
-            var baseLine = document.createElement('div');
-            baseLine.textContent = 'Base ' + formatScore(baseValue) + ' = ' + formatPercentFraction(scoreWeight) + ' × ' + formatScore(urlScoreComponent) + ' + ' + formatPercentFraction(complementWeight) + ' × ' + formatScore(siteScoreComponent);
-            scoreBox.appendChild(baseLine);
-            var momentumLine = document.createElement('div');
-            momentumLine.textContent = 'Fator momentum ×' + formatMultiplier(momentumFactor) + ' (' + formatTrend(row.momentum || 0) + ')';
-            scoreBox.appendChild(momentumLine);
-            item.appendChild(scoreBox);
           }
           if (row.reason) {
             var reason = document.createElement('div');
