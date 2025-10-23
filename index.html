@@ -113,6 +113,116 @@
       overflow-x: auto;
       overscroll-behavior: contain;
     }
+    .table-head-sticky {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: rgba(15, 23, 42, 0.92);
+      backdrop-filter: blur(8px);
+    }
+    .table-head-sticky th {
+      background: inherit;
+    }
+    .searchable-select-wrapper {
+      position: relative;
+    }
+    .searchable-select-icon {
+      position: absolute;
+      inset: 0.65rem auto auto 0.85rem;
+      display: inline-flex;
+      align-items: center;
+      pointer-events: none;
+      color: rgba(148, 163, 184, 0.65);
+      transition: color 0.2s ease, transform 0.2s ease;
+    }
+    .searchable-select {
+      width: 100%;
+      border-radius: 0.75rem;
+      padding: 0.7rem 0.95rem 0.7rem 2.6rem;
+      border: 1px solid rgba(71, 85, 105, 0.4);
+      background: linear-gradient(145deg, rgba(15, 23, 42, 0.78), rgba(15, 23, 42, 0.58));
+      color: #e2e8f0;
+      font-size: 0.875rem;
+      box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.06);
+      transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+    }
+    .searchable-select::placeholder {
+      color: rgba(148, 163, 184, 0.55);
+    }
+    .searchable-select:focus {
+      outline: none;
+      border-color: rgba(56, 189, 248, 0.65);
+      box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.18);
+      background: linear-gradient(145deg, rgba(15, 23, 42, 0.9), rgba(15, 23, 42, 0.7));
+    }
+    .searchable-select:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+      border-color: rgba(71, 85, 105, 0.2);
+      background: rgba(15, 23, 42, 0.35);
+    }
+    .searchable-select-wrapper:focus-within .searchable-select-icon {
+      color: rgba(56, 189, 248, 0.8);
+      transform: translateY(-1px);
+    }
+    .searchable-results {
+      position: absolute;
+      top: calc(100% + 0.5rem);
+      left: 0;
+      right: 0;
+      z-index: 30;
+      background: linear-gradient(165deg, rgba(15, 23, 42, 0.95), rgba(15, 23, 42, 0.88));
+      border: 1px solid rgba(71, 85, 105, 0.65);
+      box-shadow: 0 20px 35px -15px rgba(15, 23, 42, 0.85);
+      border-radius: 0.9rem;
+      padding: 0.35rem 0;
+      max-height: 18rem;
+      overflow-y: auto;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+    .searchable-results.hidden {
+      display: none;
+    }
+    .searchable-option {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      border: none;
+      background: transparent;
+      color: #e2e8f0;
+      padding: 0.55rem 1rem;
+      font-size: 0.85rem;
+      text-align: left;
+      cursor: pointer;
+      transition: background 0.15s ease, color 0.15s ease;
+    }
+    .searchable-option:hover,
+    .searchable-option:focus {
+      background: rgba(56, 189, 248, 0.12);
+      color: #f8fafc;
+      outline: none;
+    }
+    .searchable-option.is-active {
+      background: rgba(56, 189, 248, 0.18);
+      color: #f8fafc;
+    }
+    .searchable-option-label {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 0.1rem;
+    }
+    .searchable-option-secondary {
+      font-size: 0.72rem;
+      color: rgba(148, 163, 184, 0.8);
+    }
+    .searchable-empty {
+      padding: 0.75rem 1rem;
+      font-size: 0.8rem;
+      color: rgba(148, 163, 184, 0.85);
+    }
   </style>
 </head>
 <body class="text-slate-200">
@@ -137,6 +247,10 @@
             <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75l2.25 2.25 3.75-4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
             Análise
           </button>
+          <button id="tab-distribuicao" class="px-4 py-2 rounded-lg text-slate-300 hover:text-white flex items-center gap-2">
+            <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 6.75h17.25M3 12h13.5M3 17.25h9" /><path stroke-linecap="round" stroke-linejoin="round" d="M17.25 17.25H21v3.75" /></svg>
+            Distribuição
+          </button>
           <button id="tab-config" class="px-4 py-2 rounded-lg text-slate-300 hover:text-white flex items-center gap-2">
             <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v18m9-9H3" /></svg>
             Configuração
@@ -145,8 +259,7 @@
       </div>
     </header>
 
-    <section id="view-analise" class="space-y-8">
-      <div class="card rounded-2xl p-6 space-y-6">
+    <section id="filter-section" class="card rounded-2xl p-6 space-y-6">
         <div class="flex items-center justify-between flex-wrap gap-3">
           <h2 class="text-lg font-semibold text-slate-100 flex items-center gap-2">
             <svg class="w-6 h-6 text-sky-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 5.25h16.5M4.5 9h15M3.75 12.75h16.5M4.5 16.5h15" /></svg>
@@ -157,15 +270,36 @@
         <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
           <div class="lg:col-span-2">
             <label class="block text-sm text-slate-400 mb-1">Operação <span class="text-red-400">*</span></label>
-            <select id="filter-operacao" class="w-full pill rounded-lg px-3 py-2 text-sm text-slate-100 bg-slate-900/40">
-              <option value="">— selecione —</option>
-            </select>
+            <div class="searchable-select-wrapper">
+              <span class="searchable-select-icon">
+                <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 7.5l9-4.5 9 4.5M3 7.5L12 12m0 0l9-4.5M12 12V21" />
+                </svg>
+              </span>
+              <input id="filter-operacao" type="search" class="searchable-select" placeholder="Selecione ou busque operação" autocomplete="off" />
+            </div>
           </div>
           <div class="lg:col-span-2">
             <label class="block text-sm text-slate-400 mb-1">Tráfego <span class="text-red-400">*</span></label>
-            <select id="filter-trafego" class="w-full pill rounded-lg px-3 py-2 text-sm text-slate-100 bg-slate-900/40">
-              <option value="">— selecione —</option>
-            </select>
+            <div class="searchable-select-wrapper">
+              <span class="searchable-select-icon">
+                <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 6.75h15m-15 5.25h9m-9 5.25h15" />
+                </svg>
+              </span>
+              <input id="filter-trafego" type="search" class="searchable-select" placeholder="Selecione ou busque tráfego" autocomplete="off" />
+            </div>
+          </div>
+          <div id="route-filter-group" class="lg:col-span-2 hidden">
+            <label class="block text-sm text-slate-400 mb-1">Rota (slug)</label>
+            <div class="searchable-select-wrapper">
+              <span class="searchable-select-icon">
+                <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v3m0 12v3m9-9h-3M6 12H3m15.364 6.364l-2.121-2.121M8.757 8.757 6.636 6.636m12.728 0-2.121 2.121m-9.193 9.193-2.121 2.121" />
+                </svg>
+              </span>
+              <input id="filter-rota" type="search" class="searchable-select" placeholder="Selecione operação e tráfego" autocomplete="off" disabled />
+            </div>
           </div>
           <div>
             <label class="block text-sm text-slate-400 mb-1">Data inicial</label>
@@ -193,7 +327,12 @@
         </div>
       </div>
 
+    <section id="view-analise" class="space-y-8">
       <div id="analysis-wrapper" class="space-y-8"></div>
+    </section>
+
+    <section id="view-distribuicao" class="hidden space-y-8">
+      <div id="distribution-wrapper" class="space-y-8"></div>
     </section>
 
     <section id="view-config" class="hidden space-y-6">
@@ -261,13 +400,19 @@
             <label class="block text-sm text-slate-400 mb-1">Domínio ID</label>
             <input id="operacao-integracao-dominio" class="w-full pill rounded-lg px-3 py-2 bg-slate-900/40 text-slate-100" placeholder="Ex: 456" />
           </div>
+          <div>
+            <label class="block text-sm text-slate-400 mb-1">Tipo de tráfego</label>
+            <select id="operacao-integracao-trafego" class="w-full pill rounded-lg px-3 py-2 bg-slate-900/40 text-slate-100">
+              <option value="">— selecione —</option>
+            </select>
+          </div>
           <div class="md:col-span-2">
             <label class="block text-sm text-slate-400 mb-1">Slug da rota</label>
             <input id="operacao-integracao-slug" class="w-full pill rounded-lg px-3 py-2 bg-slate-900/40 text-slate-100" placeholder="Ex: ofertas-retencao" />
           </div>
-          <div class="flex items-center gap-2 md:col-span-3">
+          <div class="flex items-center gap-2 md:col-span-5">
             <input id="operacao-integracao-ativo" type="checkbox" class="w-4 h-4 rounded border-slate-600 bg-slate-900/60" />
-            <label for="operacao-integracao-ativo" class="text-sm text-slate-300">Ativar automação (atualiza porcentagens a cada 4h)</label>
+            <label for="operacao-integracao-ativo" class="text-sm text-slate-300">Ativar automação (atualiza porcentagens a cada 1h)</label>
           </div>
           <div class="md:col-span-5 flex gap-3">
             <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white font-semibold px-4 py-2 rounded-xl">Salvar</button>
@@ -283,6 +428,7 @@
             <thead class="text-slate-400 text-left">
               <tr>
                 <th class="py-2 px-2 font-semibold">Operação</th>
+                <th class="py-2 px-2 font-semibold">Tipo de tráfego</th>
                 <th class="py-2 px-2 font-semibold">Empresa ID</th>
                 <th class="py-2 px-2 font-semibold">Domínio ID</th>
                 <th class="py-2 px-2 font-semibold">Slug rota</th>
@@ -387,13 +533,16 @@
           revshare: [],
           trafficTypes: []
         },
+        activeView: 'analysis',
         groupedOperations: [],
         operationIntegrationOptions: [],
         operationIntegrationMap: {},
+        integrationIndex: {},
         trafficByType: {},
         filters: {
           operation: '',
           traffic: '',
+          route: '',
           startDate: '',
           endDate: '',
           window: 'day'
@@ -416,7 +565,8 @@
           params: null,
           selectedSite: '',
           urlSearch: '',
-          dirty: false
+          dirty: false,
+          contextKey: ''
         },
         detailed: {
           mode: 'url',
@@ -427,36 +577,448 @@
         },
         detailedChart: null,
         detailedMetricMenuCleanup: null,
-        analysis: null
+        analysis: null,
+        syncingLinkRouter: false,
+        analysisInfo: '',
+        distributionInfo: ''
       };
+
+      function makeDistributionContextKey(operation, traffic, route) {
+        var op = String(operation || '').trim().toLowerCase();
+        var tr = String(traffic || '').trim().toLowerCase();
+        var rt = String(route || '').trim().toLowerCase();
+        return [op, tr, rt].join('||');
+      }
+
+      var searchableControls = {};
+
+      function initSearchableControl(inputId, onChange) {
+        var input = document.getElementById(inputId);
+        if (!input) return;
+        var control = searchableControls[inputId];
+        if (!control) {
+          control = searchableControls[inputId] = {
+            options: [],
+            filtered: [],
+            lastValue: '',
+            initialized: false,
+            onChange: onChange,
+            dropdown: null,
+            highlightIndex: -1
+          };
+        } else {
+          control.onChange = onChange;
+        }
+        if (control.initialized) return;
+
+        var wrapper = input.closest('.searchable-select-wrapper');
+        if (wrapper) {
+          var dropdown = wrapper.querySelector('.searchable-results');
+          if (!dropdown) {
+            dropdown = document.createElement('div');
+            dropdown.className = 'searchable-results hidden';
+            wrapper.appendChild(dropdown);
+          }
+          control.dropdown = dropdown;
+          dropdown.addEventListener('mousedown', function (ev) {
+            ev.preventDefault();
+          });
+        }
+
+        var commit = function (rawValue) {
+          var normalized = String(rawValue || '').trim().toLowerCase();
+          var match = null;
+          if (normalized) {
+            match = control.options.find(function (opt) {
+              return opt.normalized === normalized;
+            });
+          }
+          var newValue = match ? match.value : '';
+          if (newValue !== control.lastValue) {
+            control.lastValue = newValue;
+            if (typeof control.onChange === 'function') {
+              control.onChange(newValue);
+            }
+          }
+          if (input.value !== newValue) {
+            input.value = newValue;
+          }
+          hideSearchableDropdown(inputId);
+        };
+
+        input.addEventListener('change', function (ev) {
+          commit(ev.target.value);
+        });
+        input.addEventListener('blur', function (ev) {
+          setTimeout(function () {
+            hideSearchableDropdown(inputId);
+            commit(ev.target.value);
+          }, 50);
+        });
+        input.addEventListener('input', function (ev) {
+          if (!ev.target.value) {
+            commit('');
+            renderSearchableDropdown(inputId, '');
+            return;
+          }
+          control.highlightIndex = -1;
+          renderSearchableDropdown(inputId, ev.target.value);
+          showSearchableDropdown(inputId);
+        });
+        input.addEventListener('keydown', function (ev) {
+          if (ev.key === 'Escape') {
+            ev.preventDefault();
+            ev.stopPropagation();
+            input.value = '';
+            commit('');
+            hideSearchableDropdown(inputId);
+            return;
+          }
+          if (ev.key === 'ArrowDown') {
+            ev.preventDefault();
+            if (!isDropdownVisible(inputId)) {
+              renderSearchableDropdown(inputId, input.value);
+              showSearchableDropdown(inputId);
+            }
+            moveSearchableHighlight(inputId, 1);
+            return;
+          }
+          if (ev.key === 'ArrowUp') {
+            ev.preventDefault();
+            if (!isDropdownVisible(inputId)) {
+              renderSearchableDropdown(inputId, input.value);
+              showSearchableDropdown(inputId);
+            }
+            moveSearchableHighlight(inputId, -1);
+            return;
+          }
+          if (ev.key === 'Enter') {
+            if (isDropdownVisible(inputId)) {
+              ev.preventDefault();
+              var selected = getHighlightedSearchableOption(inputId);
+              if (selected) {
+                control.commit(selected.value);
+                input.blur();
+              } else {
+                commit(ev.target.value);
+              }
+            }
+          }
+        });
+        input.addEventListener('focus', function () {
+          renderSearchableDropdown(inputId, input.value);
+          showSearchableDropdown(inputId);
+        });
+
+        control.commit = commit;
+        control.initialized = true;
+      }
+
+      function updateSearchableOptions(inputId, options) {
+        var input = document.getElementById(inputId);
+        var control = searchableControls[inputId];
+        if (!control) {
+          control = searchableControls[inputId] = {
+            options: [],
+            filtered: [],
+            lastValue: '',
+            initialized: false,
+            dropdown: null,
+            highlightIndex: -1
+          };
+        }
+        control.options = (options || []).map(function (item) {
+          var value = String((item && item.value) || '').trim();
+          var label = item && item.label ? String(item.label) : value;
+          var secondary = item && item.secondary ? String(item.secondary) : '';
+          var searchTokens = [value, label, secondary]
+            .filter(function (part) { return part; })
+            .join(' ')
+            .toLowerCase();
+          return {
+            value: value,
+            label: label,
+            secondary: secondary,
+            normalized: value.toLowerCase(),
+            search: searchTokens
+          };
+        });
+        control.filtered = control.options.slice();
+        if (input && !control.options.length) {
+          input.value = '';
+          control.lastValue = '';
+        } else if (control.lastValue) {
+          var exists = control.options.some(function (opt) {
+            return opt.value === control.lastValue;
+          });
+          if (!exists) {
+            control.lastValue = '';
+            if (input) input.value = '';
+          }
+        }
+        renderSearchableDropdown(inputId, input ? input.value : '');
+      }
+
+      function setSearchableValue(inputId, value, silent) {
+        var input = document.getElementById(inputId);
+        var control = searchableControls[inputId];
+        var normalized = String(value || '').trim().toLowerCase();
+        var match = control && control.options.find(function (opt) {
+          return opt.normalized === normalized;
+        });
+        var finalValue = match ? match.value : '';
+        if (input) {
+          input.value = finalValue;
+        }
+        if (control) {
+          var changed = control.lastValue !== finalValue;
+          control.lastValue = finalValue;
+          if (!silent && changed && typeof control.onChange === 'function') {
+            control.onChange(finalValue);
+          }
+          control.highlightIndex = -1;
+          renderSearchableDropdown(inputId, finalValue);
+        }
+      }
+
+      function setSearchableDisabled(inputId, disabled, placeholder) {
+        var input = document.getElementById(inputId);
+        if (!input) return;
+        input.disabled = !!disabled;
+        if (typeof placeholder === 'string') {
+          input.placeholder = placeholder;
+        }
+        if (disabled) {
+          input.value = '';
+          var control = searchableControls[inputId];
+          if (control) {
+            control.lastValue = '';
+            if (typeof control.onChange === 'function') {
+              control.onChange('');
+            }
+            hideSearchableDropdown(inputId);
+          }
+        }
+      }
+
+      function renderSearchableDropdown(inputId, query) {
+        var control = searchableControls[inputId];
+        var input = document.getElementById(inputId);
+        if (!control || !control.dropdown || !input) return;
+        var dropdown = control.dropdown;
+        var normalized = String(query || '').trim().toLowerCase();
+        var options = control.options || [];
+        control.filtered = normalized
+          ? options.filter(function (opt) {
+              return opt.search.indexOf(normalized) !== -1;
+            })
+          : options.slice();
+        dropdown.innerHTML = '';
+        control.highlightIndex = control.highlightIndex != null ? control.highlightIndex : -1;
+        if (!control.filtered.length) {
+          dropdown.appendChild(createSearchableEmpty());
+          if (!dropdown.classList.contains('hidden')) {
+            dropdown.classList.remove('hidden');
+          }
+          return;
+        }
+        control.filtered.forEach(function (opt, index) {
+          var optionButton = document.createElement('button');
+          optionButton.type = 'button';
+          optionButton.className = 'searchable-option';
+          if (index === control.highlightIndex) {
+            optionButton.classList.add('is-active');
+          }
+          var labelWrapper = document.createElement('span');
+          labelWrapper.className = 'searchable-option-label';
+          labelWrapper.textContent = opt.label;
+          if (opt.secondary) {
+            var secondary = document.createElement('span');
+            secondary.className = 'searchable-option-secondary';
+            secondary.textContent = opt.secondary;
+            labelWrapper.appendChild(secondary);
+          }
+          optionButton.appendChild(labelWrapper);
+          optionButton.addEventListener('click', function (ev) {
+            ev.preventDefault();
+            if (control.commit) {
+              control.commit(opt.value);
+            }
+            input.blur();
+          });
+          dropdown.appendChild(optionButton);
+        });
+      }
+
+      function createSearchableEmpty() {
+        var empty = document.createElement('div');
+        empty.className = 'searchable-empty';
+        empty.textContent = 'Nenhuma opção encontrada.';
+        return empty;
+      }
+
+      function showSearchableDropdown(inputId) {
+        var control = searchableControls[inputId];
+        if (!control || !control.dropdown) return;
+        if (control.options && control.options.length) {
+          control.dropdown.classList.remove('hidden');
+        }
+      }
+
+      function hideSearchableDropdown(inputId) {
+        var control = searchableControls[inputId];
+        if (!control || !control.dropdown) return;
+        control.dropdown.classList.add('hidden');
+        control.highlightIndex = -1;
+      }
+
+      function isDropdownVisible(inputId) {
+        var control = searchableControls[inputId];
+        if (!control || !control.dropdown) return false;
+        return !control.dropdown.classList.contains('hidden');
+      }
+
+      function moveSearchableHighlight(inputId, delta) {
+        var control = searchableControls[inputId];
+        if (!control || !control.dropdown) return;
+        var options = control.filtered || [];
+        if (!options.length) return;
+        if (!isDropdownVisible(inputId)) {
+          showSearchableDropdown(inputId);
+        }
+        var newIndex = control.highlightIndex + delta;
+        if (newIndex < 0) newIndex = options.length - 1;
+        if (newIndex >= options.length) newIndex = 0;
+        control.highlightIndex = newIndex;
+        var buttons = control.dropdown.querySelectorAll('.searchable-option');
+        buttons.forEach(function (btn, index) {
+          if (index === newIndex) {
+            btn.classList.add('is-active');
+            btn.scrollIntoView({ block: 'nearest' });
+          } else {
+            btn.classList.remove('is-active');
+          }
+        });
+      }
+
+      function getHighlightedSearchableOption(inputId) {
+        var control = searchableControls[inputId];
+        if (!control) return null;
+        var options = control.filtered || [];
+        if (control.highlightIndex < 0 || control.highlightIndex >= options.length) {
+          return null;
+        }
+        return options[control.highlightIndex];
+      }
 
       document.addEventListener('DOMContentLoaded', function () {
         bindTabs();
         bindFilters();
         bindForms();
         bindSearchInputs();
+        initSearchableControl('filter-operacao', function (value) {
+          if (state.filters.operation !== value) {
+            state.filters.operation = value;
+            state.filters.route = '';
+            updateRouteFilter();
+          }
+        });
+        initSearchableControl('filter-trafego', function (value) {
+          if (state.filters.traffic !== value) {
+            state.filters.traffic = value;
+            state.filters.route = '';
+            updateRouteFilter();
+          }
+        });
+        initSearchableControl('filter-rota', function (value) {
+          state.filters.route = value;
+          if (value && state.filters.operation && state.filters.traffic) {
+            aplicarFiltros();
+          } else {
+            renderDistributionPage();
+          }
+        });
         loadConfig();
       });
 
       function bindTabs() {
         var tabAnalise = document.getElementById('tab-analise');
+        var tabDistribuicao = document.getElementById('tab-distribuicao');
+        var tabConfig = document.getElementById('tab-config');
+        if (tabAnalise) {
+          tabAnalise.addEventListener('click', function () {
+            setActiveView('analysis');
+          });
+        }
+        if (tabDistribuicao) {
+          tabDistribuicao.addEventListener('click', function () {
+            setActiveView('distribution');
+          });
+        }
+        if (tabConfig) {
+          tabConfig.addEventListener('click', function () {
+            setActiveView('config');
+          });
+        }
+        setActiveView(state.activeView || 'analysis');
+      }
+
+      function setActiveView(view) {
+        var tabAnalise = document.getElementById('tab-analise');
+        var tabDistribuicao = document.getElementById('tab-distribuicao');
         var tabConfig = document.getElementById('tab-config');
         var viewAnalise = document.getElementById('view-analise');
+        var viewDistribuicao = document.getElementById('view-distribuicao');
         var viewConfig = document.getElementById('view-config');
-        tabAnalise.addEventListener('click', function () {
-          tabAnalise.classList.add('bg-blue-600', 'text-white');
-          tabConfig.classList.remove('bg-blue-600', 'text-white');
-          tabConfig.classList.add('text-slate-300');
-          viewAnalise.classList.remove('hidden');
-          viewConfig.classList.add('hidden');
-        });
-        tabConfig.addEventListener('click', function () {
-          tabConfig.classList.add('bg-blue-600', 'text-white');
-          tabAnalise.classList.remove('bg-blue-600', 'text-white');
-          tabAnalise.classList.add('text-slate-300');
-          viewConfig.classList.remove('hidden');
-          viewAnalise.classList.add('hidden');
-        });
+        var filterSection = document.getElementById('filter-section');
+        var routeGroup = document.getElementById('route-filter-group');
+        state.activeView = view;
+        if (tabAnalise) {
+          tabAnalise.classList.toggle('bg-blue-600', view === 'analysis');
+          tabAnalise.classList.toggle('text-white', view === 'analysis');
+          tabAnalise.classList.toggle('text-slate-300', view !== 'analysis');
+        }
+        if (tabDistribuicao) {
+          tabDistribuicao.classList.toggle('bg-blue-600', view === 'distribution');
+          tabDistribuicao.classList.toggle('text-white', view === 'distribution');
+          tabDistribuicao.classList.toggle('text-slate-300', view !== 'distribution');
+        }
+        if (tabConfig) {
+          tabConfig.classList.toggle('bg-blue-600', view === 'config');
+          tabConfig.classList.toggle('text-white', view === 'config');
+          tabConfig.classList.toggle('text-slate-300', view !== 'config');
+        }
+        if (viewAnalise) {
+          viewAnalise.classList.toggle('hidden', view !== 'analysis');
+        }
+        if (viewDistribuicao) {
+          viewDistribuicao.classList.toggle('hidden', view !== 'distribution');
+        }
+        if (viewConfig) {
+          viewConfig.classList.toggle('hidden', view !== 'config');
+        }
+        if (filterSection) {
+          filterSection.classList.toggle('hidden', view === 'config');
+        }
+        if (routeGroup) {
+          routeGroup.classList.toggle('hidden', view !== 'distribution');
+        }
+        if (view === 'analysis') {
+          updateLatestInfo(state.analysisInfo);
+          renderAnalysis();
+        } else if (view === 'distribution') {
+          updateLatestInfo(state.distributionInfo);
+          renderDistributionPage();
+        } else {
+          updateLatestInfo('');
+        }
+      }
+
+      function updateLatestInfo(text) {
+        var infoElement = document.getElementById('latest-info');
+        if (infoElement) {
+          infoElement.textContent = text || '';
+        }
       }
 
       function bindFilters() {
@@ -563,10 +1125,39 @@
           integrationOptions[group.name] = true;
         });
         state.operationIntegrationMap = {};
+        state.integrationIndex = {};
         (state.config.operationIntegrations || []).forEach(function (item) {
           if (!item || !item.operation) return;
           integrationOptions[item.operation] = true;
-          state.operationIntegrationMap[item.operation] = item;
+          if (!state.operationIntegrationMap[item.operation]) {
+            state.operationIntegrationMap[item.operation] = [];
+          }
+          state.operationIntegrationMap[item.operation].push(item);
+          if (!state.integrationIndex[item.operation]) {
+            state.integrationIndex[item.operation] = {};
+          }
+          var trafficKey = item.trafficType || '';
+          if (!state.integrationIndex[item.operation][trafficKey]) {
+            state.integrationIndex[item.operation][trafficKey] = [];
+          }
+          state.integrationIndex[item.operation][trafficKey].push(item);
+        });
+        Object.keys(state.operationIntegrationMap).forEach(function (op) {
+          state.operationIntegrationMap[op].sort(function (a, b) {
+            var trafficCompare = String(a.trafficType || '').localeCompare(String(b.trafficType || ''), 'pt-BR');
+            if (trafficCompare !== 0) {
+              return trafficCompare;
+            }
+            return String(a.routeSlug || '').localeCompare(String(b.routeSlug || ''), 'pt-BR');
+          });
+        });
+        Object.keys(state.integrationIndex).forEach(function (op) {
+          var byTraffic = state.integrationIndex[op];
+          Object.keys(byTraffic).forEach(function (trafficKey) {
+            byTraffic[trafficKey].sort(function (a, b) {
+              return String(a.routeSlug || '').localeCompare(String(b.routeSlug || ''), 'pt-BR');
+            });
+          });
         });
         state.operationIntegrationOptions = Object.keys(integrationOptions).sort(function (a, b) {
           return a.localeCompare(b, 'pt-BR');
@@ -580,35 +1171,128 @@
         state.trafficByType = trafficByType;
       }
 
-      function renderFilters() {
-        var selectOp = document.getElementById('filter-operacao');
-        var current = selectOp.value;
-        selectOp.innerHTML = '<option value="">— selecione —</option>';
-        state.groupedOperations.forEach(function (group) {
-          var opt = document.createElement('option');
-          opt.value = group.name;
-          opt.textContent = group.name + ' (' + group.urls.length + ' URL' + (group.urls.length === 1 ? '' : 's') + ')';
-          selectOp.appendChild(opt);
-        });
-        if (current) selectOp.value = current;
-        selectOp.onchange = function (ev) {
-          state.filters.operation = ev.target.value;
-        };
+      function getIntegrationRoutes(operation, traffic) {
+        if (!operation || !traffic) {
+          return [];
+        }
+        var index = state.integrationIndex || {};
+        var byOperation = index[operation];
+        if (!byOperation) {
+          return [];
+        }
+        var routes = byOperation[traffic] || [];
+        return routes.slice();
+      }
 
-        var selectTr = document.getElementById('filter-trafego');
-        var currentTraffic = selectTr.value;
-        selectTr.innerHTML = '<option value="">— selecione —</option>';
-        (state.config.trafficTypes || []).forEach(function (type) {
-          var opt = document.createElement('option');
-          opt.value = type;
-          var count = (state.trafficByType[type] || []).length;
-          opt.textContent = type + (count ? ' · ' + count + ' fonte(s)' : '');
-          selectTr.appendChild(opt);
+      function updateRouteFilter() {
+        var routeInput = document.getElementById('filter-rota');
+        if (!routeInput) {
+          return;
+        }
+        var operation = state.filters.operation || '';
+        var traffic = state.filters.traffic || '';
+        if (!operation || !traffic) {
+          updateSearchableOptions('filter-rota', []);
+          setSearchableDisabled('filter-rota', true, 'Selecione operação e tráfego');
+          if (state.filters.route) {
+            state.filters.route = '';
+          }
+          setSearchableValue('filter-rota', '', true);
+          return;
+        }
+        var routes = getIntegrationRoutes(operation, traffic);
+        var normalizedCurrent = String(state.filters.route || '').trim().toLowerCase();
+        if (!routes.length) {
+          updateSearchableOptions('filter-rota', []);
+          setSearchableDisabled('filter-rota', true, 'Nenhuma rota configurada');
+          state.filters.route = '';
+          setSearchableValue('filter-rota', '', true);
+          return;
+        }
+        var options = routes.map(function (item) {
+          var slug = item && item.routeSlug ? item.routeSlug : '';
+          var secondaryParts = [];
+          if (item && item.domainId) {
+            secondaryParts.push('Domínio ' + item.domainId);
+          }
+          if (item && item.trafficType) {
+            secondaryParts.push('Tráfego ' + item.trafficType);
+          }
+          return {
+            value: slug,
+            label: slug || '—',
+            secondary: secondaryParts.join(' • ')
+          };
         });
-        if (currentTraffic) selectTr.value = currentTraffic;
-        selectTr.onchange = function (ev) {
-          state.filters.traffic = ev.target.value;
-        };
+        setSearchableDisabled('filter-rota', false, 'Selecione ou busque rota');
+        updateSearchableOptions('filter-rota', options);
+        var selected = '';
+        if (normalizedCurrent) {
+          var match = routes.find(function (item) {
+            return String(item.routeSlug || '').trim().toLowerCase() === normalizedCurrent;
+          });
+          if (match) {
+            selected = match.routeSlug || '';
+          }
+        }
+        if (!selected && routes.length === 1) {
+          selected = routes[0].routeSlug || '';
+        }
+        state.filters.route = selected;
+        setSearchableValue('filter-rota', selected, true);
+      }
+
+      function renderFilters() {
+        var operationOptions = state.groupedOperations.map(function (group) {
+          return {
+            value: group.name,
+            label: group.name + ' (' + group.urls.length + ' URL' + (group.urls.length === 1 ? '' : 's') + ')'
+          };
+        });
+        updateSearchableOptions('filter-operacao', operationOptions);
+        if (!operationOptions.length) {
+          if (state.filters.operation) {
+            state.filters.operation = '';
+          }
+          setSearchableDisabled('filter-operacao', true, 'Nenhuma operação cadastrada');
+        } else {
+          var normalizedOp = String(state.filters.operation || '').trim().toLowerCase();
+          var opMatch = operationOptions.find(function (item) {
+            return String(item.value || '').trim().toLowerCase() === normalizedOp;
+          });
+          if (!opMatch) {
+            state.filters.operation = '';
+          }
+          setSearchableDisabled('filter-operacao', false, 'Selecione ou busque operação');
+        }
+        setSearchableValue('filter-operacao', state.filters.operation, true);
+
+        var trafficOptions = (state.config.trafficTypes || []).map(function (type) {
+          var count = (state.trafficByType[type] || []).length;
+          return {
+            value: type,
+            label: count ? type + ' · ' + count + ' fonte(s)' : type
+          };
+        });
+        updateSearchableOptions('filter-trafego', trafficOptions);
+        if (!trafficOptions.length) {
+          if (state.filters.traffic) {
+            state.filters.traffic = '';
+          }
+          setSearchableDisabled('filter-trafego', true, 'Nenhum tráfego cadastrado');
+        } else {
+          var normalizedTraffic = String(state.filters.traffic || '').trim().toLowerCase();
+          var trafficMatch = trafficOptions.find(function (item) {
+            return String(item.value || '').trim().toLowerCase() === normalizedTraffic;
+          });
+          if (!trafficMatch) {
+            state.filters.traffic = '';
+          }
+          setSearchableDisabled('filter-trafego', false, 'Selecione ou busque tráfego');
+        }
+        setSearchableValue('filter-trafego', state.filters.traffic, true);
+
+        updateRouteFilter();
       }
 
       function renderConfig() {
@@ -691,6 +1375,45 @@
         });
       }
 
+      function attachOperacaoIntegracaoSelectHandler(select) {
+        if (!select) return;
+        if (select._integrationChangeHandler) {
+          select.removeEventListener('change', select._integrationChangeHandler);
+        }
+        var handler = function (ev) {
+          var operation = ev.target.value;
+          var map = state.operationIntegrationMap || {};
+          var idInput = document.getElementById('operacao-integracao-id');
+          var companyInput = document.getElementById('operacao-integracao-empresa');
+          var domainInput = document.getElementById('operacao-integracao-dominio');
+          var slugInput = document.getElementById('operacao-integracao-slug');
+          var trafficInput = document.getElementById('operacao-integracao-trafego');
+          var activeInput = document.getElementById('operacao-integracao-ativo');
+          var records = operation ? map[operation] || [] : [];
+          var record = null;
+          if (records.length === 1) {
+            record = records[0];
+          }
+          if (record) {
+            if (idInput) idInput.value = record.id || '';
+            if (companyInput) companyInput.value = record.companyId || '';
+            if (domainInput) domainInput.value = record.domainId || '';
+            if (slugInput) slugInput.value = record.routeSlug || '';
+            if (trafficInput) trafficInput.value = record.trafficType || '';
+            if (activeInput) activeInput.checked = !!record.active;
+          } else {
+            if (idInput) idInput.value = '';
+            if (companyInput) companyInput.value = '';
+            if (domainInput) domainInput.value = '';
+            if (slugInput) slugInput.value = '';
+            if (trafficInput) trafficInput.value = '';
+            if (activeInput) activeInput.checked = false;
+          }
+        };
+        select._integrationChangeHandler = handler;
+        select.addEventListener('change', handler);
+      }
+
       function renderOperacaoIntegracaoTabela() {
         var tbody = document.getElementById('operacao-integracao-lista');
         if (!tbody) return;
@@ -713,6 +1436,27 @@
           } else {
             select.value = '';
           }
+          attachOperacaoIntegracaoSelectHandler(select);
+        }
+        var trafficSelect = document.getElementById('operacao-integracao-trafego');
+        if (trafficSelect) {
+          var currentTraffic = trafficSelect.value;
+          trafficSelect.innerHTML = '';
+          var trafficPlaceholder = document.createElement('option');
+          trafficPlaceholder.value = '';
+          trafficPlaceholder.textContent = '— selecione —';
+          trafficSelect.appendChild(trafficPlaceholder);
+          (state.config.trafficTypes || []).forEach(function (type) {
+            var opt = document.createElement('option');
+            opt.value = type;
+            opt.textContent = type;
+            trafficSelect.appendChild(opt);
+          });
+          if (currentTraffic && state.config.trafficTypes && state.config.trafficTypes.indexOf(currentTraffic) !== -1) {
+            trafficSelect.value = currentTraffic;
+          } else {
+            trafficSelect.value = '';
+          }
         }
         tbody.innerHTML = '';
         var searchValue = (state.search.operationIntegrations || '').trim().toLowerCase();
@@ -722,18 +1466,18 @@
         }
         var items = (state.config.operationIntegrations || []).slice();
         if (!items.length) {
-          tbody.innerHTML = '<tr><td colspan="6" class="px-2 py-3 text-center text-slate-400">Nenhuma operação integrada.</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="7" class="px-2 py-3 text-center text-slate-400">Nenhuma operação integrada.</td></tr>';
           return;
         }
         if (searchValue) {
           items = items.filter(function (item) {
-            return ['operation', 'companyId', 'domainId', 'routeSlug'].some(function (key) {
+            return ['operation', 'trafficType', 'companyId', 'domainId', 'routeSlug'].some(function (key) {
               return String(item[key] || '').toLowerCase().indexOf(searchValue) !== -1;
             }) || (item.active ? 'ativo' : 'inativo').indexOf(searchValue) !== -1;
           });
         }
         if (!items.length) {
-          tbody.innerHTML = '<tr><td colspan="6" class="px-2 py-3 text-center text-slate-400">Nenhum resultado para o filtro informado.</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="7" class="px-2 py-3 text-center text-slate-400">Nenhum resultado para o filtro informado.</td></tr>';
           return;
         }
         items.sort(function (a, b) {
@@ -744,6 +1488,7 @@
           var tr = document.createElement('tr');
           tr.innerHTML = [
             '<td class="px-2 py-2 align-top">' + escapeHtml(item.operation || '') + '</td>',
+            '<td class="px-2 py-2 align-top text-slate-300">' + escapeHtml(item.trafficType || '—') + '</td>',
             '<td class="px-2 py-2 align-top text-slate-300">' + escapeHtml(item.companyId || '') + '</td>',
             '<td class="px-2 py-2 align-top text-slate-300">' + escapeHtml(item.domainId || '') + '</td>',
             '<td class="px-2 py-2 align-top text-sky-300 break-all">' + escapeHtml(item.routeSlug || '') + '</td>',
@@ -764,6 +1509,7 @@
             document.getElementById('operacao-integracao-operacao').value = found.operation || '';
             document.getElementById('operacao-integracao-empresa').value = found.companyId || '';
             document.getElementById('operacao-integracao-dominio').value = found.domainId || '';
+            document.getElementById('operacao-integracao-trafego').value = found.trafficType || '';
             document.getElementById('operacao-integracao-slug').value = found.routeSlug || '';
             document.getElementById('operacao-integracao-ativo').checked = !!found.active;
           });
@@ -970,6 +1716,7 @@
         var payload = {
           id: document.getElementById('operacao-integracao-id').value,
           operation: document.getElementById('operacao-integracao-operacao').value,
+          trafficType: document.getElementById('operacao-integracao-trafego').value,
           companyId: document.getElementById('operacao-integracao-empresa').value,
           domainId: document.getElementById('operacao-integracao-dominio').value,
           routeSlug: document.getElementById('operacao-integracao-slug').value,
@@ -977,6 +1724,10 @@
         };
         if (!payload.operation) {
           showToast('Selecione a operação.', 'error');
+          return;
+        }
+        if (!payload.trafficType) {
+          showToast('Selecione o tipo de tráfego.', 'error');
           return;
         }
         if (payload.active && (!payload.companyId || !payload.domainId || !payload.routeSlug)) {
@@ -1042,6 +1793,10 @@
         }
         document.getElementById('operacao-integracao-empresa').value = '';
         document.getElementById('operacao-integracao-dominio').value = '';
+        var trafficSelect = document.getElementById('operacao-integracao-trafego');
+        if (trafficSelect) {
+          trafficSelect.value = '';
+        }
         document.getElementById('operacao-integracao-slug').value = '';
         document.getElementById('operacao-integracao-ativo').checked = false;
       }
@@ -1054,6 +1809,8 @@
       function aplicarFiltros() {
         var operation = document.getElementById('filter-operacao').value;
         var traffic = document.getElementById('filter-trafego').value;
+        var routeSelect = document.getElementById('filter-rota');
+        var route = routeSelect ? routeSelect.value : '';
         var startDate = document.getElementById('filter-inicio').value;
         var endDate = document.getElementById('filter-fim').value;
         var window = document.getElementById('filter-janela').value;
@@ -1065,8 +1822,18 @@
           showToast('Selecione um tipo de tráfego.', 'error');
           return;
         }
+        var availableRoutes = getIntegrationRoutes(operation, traffic);
+        if (!route && availableRoutes.length === 1) {
+          route = availableRoutes[0].routeSlug || '';
+        }
+        var routeRequired = state.activeView === 'distribution';
+        if (routeRequired && !route && availableRoutes.length > 1) {
+          showToast('Selecione o slug da rota desejada para continuar.', 'error');
+          return;
+        }
         state.filters.operation = operation;
         state.filters.traffic = traffic;
+        state.filters.route = route;
         state.filters.startDate = startDate;
         state.filters.endDate = endDate;
         state.filters.window = window;
@@ -1075,13 +1842,37 @@
           .withSuccessHandler(function (data) {
             showLoading(false);
             state.analysis = data;
-            syncDistributionState(data && data.distribution, true);
-            renderAnalysis();
+            var integration = data && data.integration ? data.integration : null;
+            var selectedRoute = data && data.filters ? data.filters.route : '';
+            if (!selectedRoute && integration && integration.routeSlug) {
+              selectedRoute = integration.routeSlug;
+            }
+            state.filters.route = selectedRoute || route || '';
+            updateRouteFilter();
+            var responseFilters = data && data.filters ? data.filters : {};
+            state.filters.startDate = responseFilters.startDate || '';
+            state.filters.endDate = responseFilters.endDate || '';
+            var startInput = document.getElementById('filter-inicio');
+            if (startInput) {
+              startInput.value = responseFilters.startDate || '';
+            }
+            var endInput = document.getElementById('filter-fim');
+            if (endInput) {
+              endInput.value = responseFilters.endDate || '';
+            }
+            var contextKey = makeDistributionContextKey(
+              responseFilters.operation || state.filters.operation,
+              responseFilters.traffic || state.filters.traffic,
+              responseFilters.route || state.filters.route
+            );
+            syncDistributionState(data && data.distribution, true, contextKey);
+            renderAllViews();
           })
           .withFailureHandler(handleError)
           .getDashboardData({
             operation: operation,
             traffic: traffic,
+            routeSlug: route,
             startDate: startDate,
             endDate: endDate,
             urlWindow: window,
@@ -1091,15 +1882,18 @@
 
       function renderAnalysis() {
         var wrapper = document.getElementById('analysis-wrapper');
+        if (!wrapper) return;
         wrapper.innerHTML = '';
         var data = state.analysis;
         var siteRows = data && data.site && data.site.rows ? data.site.rows.length : 0;
         var urlRows = data && data.url && data.url.rows ? data.url.rows.length : 0;
-        var distributionRows = data && data.distribution && data.distribution.sites ? data.distribution.sites.length : 0;
         var detailedRows = data && data.detailed && data.detailed.hours && data.detailed.hours.length && ((data.detailed.urls && data.detailed.urls.length) || (data.detailed.sites && data.detailed.sites.length)) ? 1 : 0;
-        if (!data || (!siteRows && !urlRows && !distributionRows && !detailedRows)) {
+        if (!data || (!siteRows && !urlRows && !detailedRows)) {
           wrapper.innerHTML = '<div class="card rounded-2xl p-6 text-center text-slate-400">Nenhum dado encontrado para os filtros selecionados.</div>';
-          document.getElementById('latest-info').textContent = '';
+          state.analysisInfo = '';
+          if (state.activeView === 'analysis') {
+            updateLatestInfo('');
+          }
           return;
         }
         if (data && data.distribution) {
@@ -1114,20 +1908,22 @@
           state.detailedChart = null;
         }
         wrapper.appendChild(renderAnalysisTabs(data));
-        if (state.analysisTab === 'distribution') {
-          document.getElementById('latest-info').textContent = buildDistributionInfo(data && data.distribution);
-          renderDistributionView(data && data.distribution, wrapper);
-          return;
-        }
         if (state.analysisTab === 'detailed') {
-          document.getElementById('latest-info').textContent = buildDetailedInfo(data && data.detailed, data && data.filters);
+          var detailedInfo = buildDetailedInfo(data && data.detailed, data && data.filters);
+          state.analysisInfo = detailedInfo;
+          if (state.activeView === 'analysis') {
+            updateLatestInfo(detailedInfo);
+          }
           renderDetailedView(data && data.detailed, wrapper);
           return;
         }
+        var infoText = '';
         if (siteRows || urlRows) {
-          document.getElementById('latest-info').textContent = buildOverviewInfo(data);
-        } else {
-          document.getElementById('latest-info').textContent = '';
+          infoText = buildOverviewInfo(data);
+        }
+        state.analysisInfo = infoText;
+        if (state.activeView === 'analysis') {
+          updateLatestInfo(infoText);
         }
         if (!siteRows && !urlRows) {
           var emptyOverview = document.createElement('div');
@@ -1144,23 +1940,48 @@
         }
       }
 
+      function renderDistributionPage() {
+        var wrapper = document.getElementById('distribution-wrapper');
+        if (!wrapper) return;
+        wrapper.innerHTML = '';
+        var data = state.analysis;
+        var distribution = data && data.distribution ? data.distribution : null;
+        if (distribution) {
+          syncDistributionState(distribution);
+        }
+        var infoParts = [];
+        if (distribution) {
+          var distributionInfo = buildDistributionInfo(distribution);
+          if (distributionInfo) infoParts.push(distributionInfo);
+        }
+        var integrationInfo = buildIntegrationInfo(data && data.integration);
+        if (integrationInfo) infoParts.push(integrationInfo);
+        var infoText = infoParts.join(' • ');
+        state.distributionInfo = infoText;
+        if (state.activeView === 'distribution') {
+          updateLatestInfo(infoText);
+        }
+        renderDistributionView(distribution, wrapper);
+      }
+
+      function renderAllViews() {
+        renderAnalysis();
+        renderDistributionPage();
+      }
+
       function ensureActiveAnalysisTab(data) {
         var hasOverview = data && ((data.site && data.site.rows && data.site.rows.length) || (data.url && data.url.rows && data.url.rows.length));
         var hasDetailed = data && data.detailed && data.detailed.hours && data.detailed.hours.length && ((data.detailed.urls && data.detailed.urls.length) || (data.detailed.sites && data.detailed.sites.length));
-        var hasDistribution = data && data.distribution && data.distribution.sites && data.distribution.sites.length;
         var current = state.analysisTab;
         var available = {
           overview: !!hasOverview,
-          detailed: !!hasDetailed,
-          distribution: !!hasDistribution
+          detailed: !!hasDetailed
         };
         if (!available[current]) {
           if (available.overview) {
             state.analysisTab = 'overview';
           } else if (available.detailed) {
             state.analysisTab = 'detailed';
-          } else if (available.distribution) {
-            state.analysisTab = 'distribution';
           } else {
             state.analysisTab = 'overview';
           }
@@ -1172,12 +1993,10 @@
         tabsCard.className = 'card rounded-2xl p-2 flex flex-wrap gap-2';
         var hasOverview = data && data.site && data.site.rows && data.site.rows.length;
         hasOverview = hasOverview || (data && data.url && data.url.rows && data.url.rows.length);
-        var hasDistribution = data && data.distribution && data.distribution.sites && data.distribution.sites.length;
         var hasDetailed = data && data.detailed && data.detailed.hours && data.detailed.hours.length && ((data.detailed.urls && data.detailed.urls.length) || (data.detailed.sites && data.detailed.sites.length));
         var tabs = [
           { id: 'overview', label: 'Resumo de desempenho', available: hasOverview },
-          { id: 'detailed', label: 'Análise detalhada', available: hasDetailed },
-          { id: 'distribution', label: 'Distribuição inteligente', available: hasDistribution }
+          { id: 'detailed', label: 'Análise detalhada', available: hasDetailed }
         ];
         tabs.forEach(function (tab) {
           var button = document.createElement('button');
@@ -1242,6 +2061,25 @@
         }
         if (distribution.hours && distribution.hours.length) {
           infoParts.push('Horas base: ' + distribution.hours.join(', '));
+        }
+        return infoParts.join(' • ');
+      }
+
+      function buildIntegrationInfo(integration) {
+        if (!integration) return 'Integração não configurada';
+        var infoParts = [];
+        infoParts.push(integration.active ? 'Automação ativa' : 'Automação inativa');
+        if (integration.trafficType) {
+          infoParts.push('Tráfego ' + integration.trafficType);
+        }
+        if (integration.companyId) {
+          infoParts.push('Empresa ' + integration.companyId);
+        }
+        if (integration.domainId) {
+          infoParts.push('Domínio ' + integration.domainId);
+        }
+        if (integration.routeSlug) {
+          infoParts.push('Slug ' + integration.routeSlug);
         }
         return infoParts.join(' • ');
       }
@@ -2051,7 +2889,8 @@
           return;
         }
         resolveDistributionSelection(distribution);
-        wrapper.appendChild(renderDistributionControlsCard(distribution));
+        var integration = state.analysis && state.analysis.integration ? state.analysis.integration : null;
+        wrapper.appendChild(renderDistributionControlsCard(distribution, integration));
         wrapper.appendChild(renderDistributionSitesCard(distribution));
         var globalCard = renderDistributionGlobalUrlsCard(distribution);
         if (globalCard) {
@@ -2060,7 +2899,7 @@
         wrapper.appendChild(renderDistributionUrlsCard(distribution));
       }
 
-      function renderDistributionControlsCard(distribution) {
+      function renderDistributionControlsCard(distribution, integration) {
         var card = document.createElement('div');
         card.className = 'card rounded-2xl p-6 space-y-4';
         var header = document.createElement('div');
@@ -2077,25 +2916,17 @@
         }
         card.appendChild(header);
 
+        card.appendChild(renderDistributionIntegrationSummary(integration));
+
         var params = (state.distribution && state.distribution.params) || distribution.controls || {};
         var fields = [
-          { key: 'totalSessions', label: 'Sessões alvo', type: 'number', step: 500, min: 1000, decimals: 0 },
-          { key: 'tau', label: 'Temperatura global (τ)', type: 'number', step: 1, min: 1, decimals: 0 },
-          { key: 'tauLocal', label: 'Temperatura local (τ local)', type: 'number', step: 1, min: 1, decimals: 0 },
-          { key: 'reliabilityK', label: 'K de confiabilidade', type: 'number', step: 10, min: 0, decimals: 0 },
-          { key: 'ucbZ', label: 'Fator UCB (z)', type: 'number', step: 1, min: 0, decimals: 0 },
-          { key: 'siteMinShare', label: 'Share mínimo por site (%)', percent: true, step: 0.5, min: 0, decimals: 1 },
-          { key: 'siteMaxShare', label: 'Share máximo por site (%)', percent: true, step: 0.5, min: 0, decimals: 1 },
-          { key: 'siteStep', label: 'Passo máximo site (%)', percent: true, step: 1, min: 0, decimals: 1 },
-          { key: 'urlSeedPercent', label: 'Seed mínimo URL (%)', percent: true, step: 0.5, min: 0, decimals: 1 },
-          { key: 'urlSeedSessions', label: 'Seed mínimo URL (sessões)', type: 'number', step: 10, min: 0, decimals: 0 },
+          { key: 'urlSeedPercent', label: 'Share mínimo URL (%)', percent: true, step: 0.1, min: 0, decimals: 1 },
           { key: 'urlMinRecipients', label: 'URLs prioritárias', type: 'number', step: 1, min: 0, decimals: 0 },
+          { key: 'urlPriorityShare', label: 'Share URLs prioritárias (%)', percent: true, step: 1, min: 0, decimals: 1 },
           { key: 'urlTargetRecipients', label: 'URLs ativas (limite)', type: 'number', step: 1, min: 0, decimals: 0 },
-          { key: 'urlMaxShare', label: 'Teto por URL (%)', percent: true, step: 0.5, min: 0, decimals: 1 },
-          { key: 'urlStep', label: 'Passo máximo URL (%)', percent: true, step: 1, min: 0, decimals: 1 },
           { key: 'modeThresholdRps', label: 'Limite RPS modo apostas ($)', type: 'number', step: 10, min: 0, decimals: 0 },
-          { key: 'modeThresholdCv', label: 'Limite CV modo apostas (%)', percent: true, step: 0.5, min: 0, decimals: 1 },
-          { key: 'controlReserve', label: 'Reserva controle (%)', percent: true, step: 0.5, min: 0, decimals: 1 }
+          { key: 'controlReserve', label: 'Reserva controle (%)', percent: true, step: 0.5, min: 0, decimals: 1 },
+          { key: 'betMinShare', label: 'Share mínimo por URL aposta (%)', percent: true, step: 0.5, min: 0, decimals: 1 }
         ];
 
         var grid = document.createElement('div');
@@ -2124,7 +2955,7 @@
             if (isNaN(raw)) return;
             var normalized = field.percent ? raw / 100 : raw;
             updateDistributionParam(field.key, normalized);
-            renderAnalysis();
+            renderAllViews();
           });
           wrapper.appendChild(input);
           grid.appendChild(wrapper);
@@ -2140,45 +2971,21 @@
         requireInput.checked = !!params.urlRequireAll;
         requireInput.addEventListener('change', function (ev) {
           updateDistributionParam('urlRequireAll', ev.target.checked ? 1 : 0);
-          renderAnalysis();
+          renderAllViews();
         });
         requireLabel.appendChild(requireInput);
         var requireText = document.createElement('span');
-        requireText.textContent = 'Garantir seed mínimo para todas as URLs';
+        requireText.textContent = 'Garantir tráfego em todas as URLs';
         requireLabel.appendChild(requireText);
         toggleRow.appendChild(requireLabel);
         var toggleHint = document.createElement('p');
         toggleHint.className = 'text-xs text-slate-400';
-        toggleHint.textContent = 'Quando desativado, apenas as URLs prioritárias recebem o seed mínimo configurado.';
+        toggleHint.textContent = 'Quando desativado, apenas as URLs prioritárias recebem o tráfego mínimo configurado.';
         toggleRow.appendChild(toggleHint);
         card.appendChild(toggleRow);
 
-        var quickActions = document.createElement('div');
-        quickActions.className = 'flex flex-wrap items-center justify-between gap-3';
-        var actionsLeft = document.createElement('div');
-        actionsLeft.className = 'flex flex-wrap gap-2';
-        var actionButtons = [
-          { label: 'Seed 50', handler: function () { updateDistributionParam('urlSeedSessions', 50); } },
-          { label: 'Seed 100', handler: function () { updateDistributionParam('urlSeedSessions', 100); } },
-          { label: 'Seed 200', handler: function () { updateDistributionParam('urlSeedSessions', 200); } },
-          { label: 'Teto 35%', handler: function () { updateDistributionParam('urlMaxShare', 0.35); } },
-          { label: 'Teto 25%', handler: function () { updateDistributionParam('urlMaxShare', 0.25); } },
-          { label: 'Desligar apostas', handler: function () { updateDistributionParam('exploitPortion', 1); updateDistributionParam('explorePortion', 0); } }
-        ];
-        actionButtons.forEach(function (action) {
-          var btn = document.createElement('button');
-          btn.type = 'button';
-          btn.className = 'px-3 py-1.5 rounded-lg border border-slate-600/60 text-xs text-slate-200 hover:bg-slate-800/70 transition-colors';
-          btn.textContent = action.label;
-          btn.addEventListener('click', function (ev) {
-            ev.preventDefault();
-            action.handler();
-            renderAnalysis();
-          });
-          actionsLeft.appendChild(btn);
-        });
-        quickActions.appendChild(actionsLeft);
-
+        var buttonsRow = document.createElement('div');
+        buttonsRow.className = 'flex flex-wrap items-center justify-between gap-3';
         var applyButton = document.createElement('button');
         applyButton.type = 'button';
         applyButton.id = 'btn-distribuicao-aplicar';
@@ -2188,15 +2995,110 @@
           ev.preventDefault();
           recalcularDistribuicao();
         });
-        quickActions.appendChild(applyButton);
-        card.appendChild(quickActions);
+        buttonsRow.appendChild(applyButton);
+
+        var syncButton = document.createElement('button');
+        syncButton.type = 'button';
+        syncButton.id = 'btn-distribuicao-sincronizar';
+        syncButton.className = 'inline-flex items-center gap-2 bg-sky-600 hover:bg-sky-500 text-white font-semibold px-5 py-2.5 rounded-xl shadow-lg shadow-sky-900/40 transition-all';
+        var canSync = integration && integration.companyId && integration.domainId && integration.routeSlug;
+        var isSyncing = !!state.syncingLinkRouter;
+        if (isSyncing) {
+          syncButton.innerHTML = '<svg class="w-5 h-5 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992m-5.614 3.72l3.536 3.536m-6.366-.964v4.992m-3.72-5.614l-3.536 3.536m.964-6.366H1.287m5.614-3.72L3.365 5.466m6.366.964V1.438m3.72 5.614l3.536-3.536" /></svg>Sincronizando...';
+        } else {
+          syncButton.innerHTML = '<svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992m-5.614 3.72l3.536 3.536m-6.366-.964v4.992m-3.72-5.614l-3.536 3.536m.964-6.366H1.287m5.614-3.72L3.365 5.466m6.366.964V1.438m3.72 5.614l3.536-3.536" /></svg>Sincronizar com API';
+        }
+        if (!canSync) {
+          syncButton.disabled = true;
+          syncButton.classList.add('opacity-60', 'cursor-not-allowed');
+          syncButton.title = 'Configure a integração do Link Router na aba Configuração.';
+        }
+        if (isSyncing) {
+          syncButton.disabled = true;
+          syncButton.classList.add('opacity-60', 'cursor-not-allowed');
+        } else if (canSync) {
+          syncButton.addEventListener('click', function (ev) {
+            ev.preventDefault();
+            sincronizarDistribuicao();
+          });
+        }
+        buttonsRow.appendChild(syncButton);
+        card.appendChild(buttonsRow);
 
         var summary = document.createElement('p');
         summary.className = 'text-xs text-slate-400';
-        summary.textContent = 'Plano atual considera ' + formatNumber(distribution.totalSessions || params.totalSessions || 0) + ' sessões alvo.';
+        summary.textContent = 'Plano atual considera ' + formatNumber(distribution.totalSessions || 0) + ' sessões observadas na janela selecionada.';
         card.appendChild(summary);
 
         return card;
+      }
+
+      function renderDistributionIntegrationSummary(integration) {
+        var container = document.createElement('div');
+        container.className = 'rounded-xl border border-slate-700/60 bg-slate-900/40 p-4 space-y-3';
+        var header = document.createElement('div');
+        header.className = 'flex items-center justify-between flex-wrap gap-2';
+        var title = document.createElement('span');
+        title.className = 'text-sm font-semibold text-slate-200';
+        title.textContent = 'Integração Link Router';
+        header.appendChild(title);
+        var status = document.createElement('span');
+        status.className = 'inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border ';
+        var configured = !!integration;
+        var active = configured && !!integration.active;
+        var statusIcon = '';
+        var statusText = '';
+        if (active) {
+          status.className += 'bg-emerald-500/15 text-emerald-300 border-emerald-400/40';
+          statusIcon = '<svg class="w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>';
+          statusText = 'Automação ativa';
+        } else if (configured) {
+          status.className += 'bg-amber-500/15 text-amber-200 border-amber-400/40';
+          statusIcon = '<svg class="w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9.75 9v6.75m4.5-6.75V15.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>';
+          statusText = 'Automação inativa';
+        } else {
+          status.className += 'bg-slate-800/60 text-slate-300 border-slate-600/50';
+          statusIcon = '<svg class="w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 6l12 12M6 18L18 6" /></svg>';
+          statusText = 'Integração não configurada';
+        }
+        status.innerHTML = statusIcon + statusText;
+        header.appendChild(status);
+        container.appendChild(header);
+
+        var createDetail = function (label, value) {
+          var block = document.createElement('div');
+          var labelEl = document.createElement('span');
+          labelEl.className = 'text-[0.65rem] uppercase tracking-wide text-slate-500';
+          labelEl.textContent = label;
+          block.appendChild(labelEl);
+          var valueEl = document.createElement('span');
+          valueEl.className = 'block text-sm font-semibold text-slate-200 break-all';
+          valueEl.textContent = value || '—';
+          block.appendChild(valueEl);
+          return block;
+        };
+
+        if (configured) {
+          var grid = document.createElement('div');
+          grid.className = 'grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-xs text-slate-300';
+          grid.appendChild(createDetail('Operação', integration.operation || '—'));
+          grid.appendChild(createDetail('Empresa ID', integration.companyId || '—'));
+          grid.appendChild(createDetail('Domínio ID', integration.domainId || '—'));
+          grid.appendChild(createDetail('Slug rota', integration.routeSlug || '—'));
+          container.appendChild(grid);
+
+          var hint = document.createElement('p');
+          hint.className = 'text-xs text-slate-400';
+          hint.textContent = active ? 'Sincronização automática com o Link Router executará a cada 1h.' : 'Ative a automação para sincronizar as porcentagens a cada 1h.';
+          container.appendChild(hint);
+        } else {
+          var message = document.createElement('p');
+          message.className = 'text-xs text-slate-400';
+          message.textContent = 'Configure a integração na aba Configuração para habilitar o envio automático ao Link Router.';
+          container.appendChild(message);
+        }
+
+        return container;
       }
 
       function renderDistributionSitesCard(distribution) {
@@ -2222,7 +3124,7 @@
         tableWrap.className = 'overflow-auto';
         var html = '';
         html += '<table class="w-full text-sm min-w-max">';
-        html += '<thead class="text-slate-300">';
+        html += '<thead class="text-slate-300 table-head-sticky">';
         html += '<tr>' +
           '<th class="px-3 py-2 text-left font-semibold">' + buildSortHeader('distributionSites', 'site', 'Site', 'left') + '</th>' +
           '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionSites', 'rps', 'RPS ($)', 'right') + '</th>' +
@@ -2264,7 +3166,7 @@
           var site = target.getAttribute('data-site-select');
           if (!site) return;
           state.distribution.selectedSite = site;
-          renderAnalysis();
+          renderAllViews();
         });
         return card;
       }
@@ -2302,6 +3204,24 @@
           active.textContent = 'URLs com tráfego: ' + activeCount;
         }
         infoWrap.appendChild(active);
+        if (summary.priorityCount) {
+          var priorityInfo = document.createElement('span');
+          var priorityTargetShare = summary.priorityShareTarget != null ? summary.priorityShareTarget : 0;
+          var priorityActive = summary.priorityActive != null ? summary.priorityActive : 0;
+          priorityInfo.textContent = 'Prioritárias: ' + priorityActive + ' de ' + summary.priorityCount + ' • alvo ' + formatShare(priorityTargetShare || 0);
+          infoWrap.appendChild(priorityInfo);
+        }
+        if (summary.priorityShareActual != null) {
+          var priorityShare = document.createElement('span');
+          priorityShare.textContent = 'Tráfego prioritário: ' + formatShare(summary.priorityShareActual || 0);
+          infoWrap.appendChild(priorityShare);
+        }
+        if (summary.betMode) {
+          var betInfo = document.createElement('span');
+          var betShare = formatShare(summary.betShareActual || 0);
+          betInfo.textContent = 'Modo apostas ativo • tráfego: ' + betShare + ' (' + (summary.betRecipients || 0) + ' URLs)';
+          infoWrap.appendChild(betInfo);
+        }
         if (!summary.limitApplied && summary.targetRecipients) {
           var targetInfo = document.createElement('span');
           targetInfo.textContent = 'Meta de URLs: ' + summary.targetRecipients;
@@ -2365,6 +3285,15 @@
             '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-slate-900/70 border border-slate-700/60">Site ' + formatShare(row.suggestedShare || 0) + '</span>' +
             '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-slate-900/70 border border-slate-700/60">Δ ' + formatDeltaShare(row.deltaGlobalShare || 0) + '</span>' +
             '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-slate-900/70 border border-slate-700/60">Cov ' + formatPercent(row.coverage || 0) + '</span>';
+          if (row.performanceScore != null) {
+            meta.innerHTML += '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-200 border border-emerald-400/40">Desempenho ' + formatShare(row.performanceScore || 0) + '</span>';
+          }
+          if (row.priority) {
+            meta.innerHTML += '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-purple-500/15 text-purple-200 border border-purple-400/40">Prioritária</span>';
+          }
+          if (row.bet) {
+            meta.innerHTML += '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-amber-500/15 text-amber-200 border border-amber-400/40">Aposta</span>';
+          }
           if (row.guaranteed) {
             meta.innerHTML += '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-indigo-500/15 text-indigo-200 border border-indigo-400/40">Garantido</span>';
           }
@@ -2378,6 +3307,18 @@
             meta.innerHTML += '<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-slate-900/70 border border-slate-700/60">Próx: ' + escapeHtml(row.nextEval) + '</span>';
           }
           item.appendChild(meta);
+          if (row.performanceScore != null) {
+            var perfBox = document.createElement('div');
+            perfBox.className = 'w-full rounded-lg bg-slate-900/60 border border-slate-700/50 p-3 space-y-1 text-xs leading-snug text-slate-300';
+            var perfTitle = document.createElement('div');
+            perfTitle.className = 'text-slate-100 font-semibold';
+            perfTitle.textContent = 'Desempenho composto ' + formatShare(row.performanceScore || 0);
+            perfBox.appendChild(perfTitle);
+            var perfBreakdown = document.createElement('div');
+            perfBreakdown.textContent = 'Score ' + formatShare(row.performanceNormalizedScore || 0) + ' • eCPM ' + formatShare(row.performanceNormalizedEcpm || 0) + ' • RPS ' + formatShare(row.performanceNormalizedRps || 0);
+            perfBox.appendChild(perfBreakdown);
+            item.appendChild(perfBox);
+          }
           if (row.reason) {
             var reason = document.createElement('div');
             reason.className = 'text-xs text-slate-400 leading-snug';
@@ -2430,7 +3371,7 @@
         searchInput.value = state.distribution.urlSearch || '';
         searchInput.addEventListener('input', function (ev) {
           state.distribution.urlSearch = ev.target.value;
-          renderAnalysis();
+          renderAllViews();
         });
         searchWrapper.appendChild(searchLabel);
         searchWrapper.appendChild(searchInput);
@@ -2455,7 +3396,7 @@
         tableWrap.className = 'overflow-auto scroll-list-15';
         var html = '';
         html += '<table class="w-full text-sm min-w-max">';
-        html += '<thead class="text-slate-300">';
+        html += '<thead class="text-slate-300 table-head-sticky">';
         html += '<tr>' +
           '<th class="px-3 py-2 text-left font-semibold">' + buildSortHeader('distributionUrls', 'url', 'URL', 'left') + '</th>' +
           '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionUrls', 'sessions', 'Sessões (3h)', 'right') + '</th>' +
@@ -2464,6 +3405,7 @@
           '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionUrls', 'ecpmEff', 'eCPM Efetivo ($)', 'right') + '</th>' +
           '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionUrls', 'momentum', 'Momentum', 'right') + '</th>' +
           '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionUrls', 'score', 'Score', 'right') + '</th>' +
+          '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionUrls', 'performanceScore', 'Desempenho (%)', 'right') + '</th>' +
           '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionUrls', 'currentShare', '% Atual', 'right') + '</th>' +
           '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionUrls', 'suggestedShare', '% Sugerida', 'right') + '</th>' +
           '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('distributionUrls', 'suggestedGlobalShare', '% Global', 'right') + '</th>' +
@@ -2480,9 +3422,10 @@
             '<td class="px-3 py-2 text-right">' + formatNumber(row.sessions) + '</td>' +
             '<td class="px-3 py-2 text-right">' + formatCurrency(row.rps) + '</td>' +
             '<td class="px-3 py-2 text-right">' + formatPercent(row.coverage) + '</td>' +
-            '<td class="px-3 py-2 text-right">' + formatCurrency(row.ecpmEff) + '</td>' +
-            '<td class="px-3 py-2 text-right">' + formatTrend(row.momentum) + '</td>' +
-            '<td class="px-3 py-2 text-right">' + formatCurrency(row.score) + '</td>' +
+          '<td class="px-3 py-2 text-right">' + formatCurrency(row.ecpmEff) + '</td>' +
+          '<td class="px-3 py-2 text-right">' + formatTrend(row.momentum) + '</td>' +
+          '<td class="px-3 py-2 text-right">' + formatCurrency(row.score) + '</td>' +
+          '<td class="px-3 py-2 text-right">' + formatShare(row.performanceScore) + '</td>' +
             '<td class="px-3 py-2 text-right">' + formatShare(row.currentShare) + '</td>' +
             '<td class="px-3 py-2 text-right">' + formatShare(row.suggestedShare) + '</td>' +
             '<td class="px-3 py-2 text-right">' + formatShare(row.suggestedGlobalShare) + '</td>' +
@@ -2569,6 +3512,7 @@
         if (key === 'ecpmEff') return Number(row.ecpmEff || 0);
         if (key === 'momentum') return Number(row.momentum || 0);
         if (key === 'score') return Number(row.score || 0);
+        if (key === 'performanceScore') return Number(row.performanceScore || 0);
         if (key === 'currentShare') return Number(row.currentShare || 0);
         if (key === 'suggestedShare') return Number(row.suggestedShare || 0);
         if (key === 'suggestedGlobalShare') return Number(row.suggestedGlobalShare || 0);
@@ -2593,6 +3537,10 @@
 
       function getDistributionPayload() {
         if (!state.distribution || !state.distribution.params) return null;
+        var currentKey = makeDistributionContextKey(state.filters.operation, state.filters.traffic, state.filters.route);
+        if (!state.distribution.contextKey || state.distribution.contextKey !== currentKey) {
+          return null;
+        }
         var payload = {};
         Object.keys(state.distribution.params).forEach(function (key) {
           var value = state.distribution.params[key];
@@ -2603,15 +3551,18 @@
         return payload;
       }
 
-      function syncDistributionState(distribution, force) {
+      function syncDistributionState(distribution, force, contextKey) {
         if (!state.distribution) {
-          state.distribution = { params: null, selectedSite: '', urlSearch: '', dirty: false };
+          state.distribution = { params: null, selectedSite: '', urlSearch: '', dirty: false, contextKey: '' };
         }
         if (distribution && distribution.controls && (force || !state.distribution.dirty)) {
           state.distribution.params = Object.assign({}, distribution.controls);
           state.distribution.dirty = false;
         } else if (!state.distribution.params) {
           state.distribution.params = {};
+        }
+        if (typeof contextKey !== 'undefined') {
+          state.distribution.contextKey = contextKey || '';
         }
         if (distribution && distribution.sites && distribution.sites.length) {
           var selected = state.distribution.selectedSite;
@@ -2640,16 +3591,146 @@
           .withSuccessHandler(function (data) {
             showLoading(false);
             state.analysis = data;
-            syncDistributionState(data && data.distribution, true);
-            renderAnalysis();
+            var responseFilters = data && data.filters ? data.filters : {};
+            state.filters.startDate = responseFilters.startDate || '';
+            state.filters.endDate = responseFilters.endDate || '';
+            var startInput = document.getElementById('filter-inicio');
+            if (startInput) {
+              startInput.value = responseFilters.startDate || '';
+            }
+            var endInput = document.getElementById('filter-fim');
+            if (endInput) {
+              endInput.value = responseFilters.endDate || '';
+            }
+            var contextKey = makeDistributionContextKey(
+              responseFilters.operation || state.filters.operation,
+              responseFilters.traffic || state.filters.traffic,
+              responseFilters.route || state.filters.route
+            );
+            syncDistributionState(data && data.distribution, true, contextKey);
+            renderAllViews();
           })
           .withFailureHandler(handleError)
           .getDashboardData({
             operation: state.filters.operation,
             traffic: state.filters.traffic,
+            routeSlug: state.filters.route,
             startDate: state.filters.startDate,
             endDate: state.filters.endDate,
             urlWindow: state.filters.window,
+            distribution: getDistributionPayload()
+          });
+      }
+
+      function sincronizarDistribuicao() {
+        if (state.syncingLinkRouter) {
+          return;
+        }
+        if (!state.filters.operation || !state.filters.traffic) {
+          showToast('Aplique os filtros principais antes de sincronizar com a API.', 'error');
+          return;
+        }
+        var route = state.filters.route || '';
+        var availableRoutes = getIntegrationRoutes(state.filters.operation, state.filters.traffic);
+        if (!route && availableRoutes.length === 1) {
+          route = availableRoutes[0].routeSlug || '';
+          state.filters.route = route;
+        }
+        if (!route && availableRoutes.length > 1) {
+          showToast('Selecione o slug da rota para sincronizar.', 'error');
+          return;
+        }
+        var routeRecord = null;
+        if (route) {
+          routeRecord = availableRoutes.find(function (item) {
+            return String(item.routeSlug || '').trim().toLowerCase() === String(route || '').trim().toLowerCase();
+          }) || null;
+          if (!routeRecord) {
+            showToast('Integração não encontrada para o slug selecionado.', 'error');
+            return;
+          }
+        } else if (availableRoutes.length === 1) {
+          routeRecord = availableRoutes[0];
+        }
+        var integration = routeRecord || (state.analysis && state.analysis.integration ? state.analysis.integration : null);
+        if (!integration || !integration.companyId || !integration.domainId || !integration.routeSlug) {
+          showToast('Configure a integração do Link Router na aba Configuração antes de sincronizar.', 'error');
+          return;
+        }
+        var distribution = state.analysis && state.analysis.distribution ? state.analysis.distribution : null;
+        if (!distribution || !distribution.globalUrls || !distribution.globalUrls.all || !distribution.globalUrls.all.length) {
+          showToast('Nenhum plano de distribuição disponível para sincronização.', 'error');
+          return;
+        }
+        state.syncingLinkRouter = true;
+        renderAllViews();
+        showLoading(true);
+        google.script.run
+          .withSuccessHandler(function (result) {
+            state.syncingLinkRouter = false;
+            showLoading(false);
+            if (result && result.dashboard) {
+              state.analysis = result.dashboard;
+              var dashFilters = result.dashboard && result.dashboard.filters ? result.dashboard.filters : {};
+              state.filters.startDate = dashFilters.startDate || '';
+              state.filters.endDate = dashFilters.endDate || '';
+              var startInput = document.getElementById('filter-inicio');
+              if (startInput) {
+                startInput.value = dashFilters.startDate || '';
+              }
+              var endInput = document.getElementById('filter-fim');
+              if (endInput) {
+                endInput.value = dashFilters.endDate || '';
+              }
+              var contextKey = makeDistributionContextKey(
+                dashFilters.operation || state.filters.operation,
+                dashFilters.traffic || state.filters.traffic,
+                dashFilters.route || state.filters.route
+              );
+              syncDistributionState(result.dashboard.distribution, true, contextKey);
+              var integrationResult = result.dashboard.integration;
+              var selectedRoute = result.dashboard.filters ? result.dashboard.filters.route : '';
+              if (!selectedRoute && integrationResult && integrationResult.routeSlug) {
+                selectedRoute = integrationResult.routeSlug;
+              }
+              state.filters.route = selectedRoute || route || '';
+              updateRouteFilter();
+            }
+            renderAllViews();
+            var successMessage = result && result.message ? result.message : 'Percentuais sincronizados com sucesso.';
+            showToast(successMessage, 'success');
+            if (result) {
+              var notices = [];
+              if (result.leftoverShares && result.leftoverShares.length) {
+                var leftoverPreview = result.leftoverShares.slice(0, 3).map(function (item) {
+                  return (item.url || 'URL') + ' (' + formatShare(item.share || 0) + ')';
+                });
+                var leftoverExtra = result.leftoverShares.length > 3 ? ' +' + (result.leftoverShares.length - 3) + ' outras' : '';
+                notices.push('URLs sugeridas não encontradas na API: ' + leftoverPreview.join(', ') + leftoverExtra);
+              }
+              if (result.unmatchedLinks && result.unmatchedLinks.length) {
+                var unmatchedPreview = result.unmatchedLinks.slice(0, 3).map(function (url) { return url || 'URL'; });
+                var unmatchedExtra = result.unmatchedLinks.length > 3 ? ' +' + (result.unmatchedLinks.length - 3) + ' outras' : '';
+                notices.push('URLs da API sem correspondência no plano atual: ' + unmatchedPreview.join(', ') + unmatchedExtra);
+              }
+              notices.forEach(function (message) {
+                showToast(message, 'info');
+              });
+            }
+          })
+          .withFailureHandler(function (err) {
+            state.syncingLinkRouter = false;
+            showLoading(false);
+            renderAllViews();
+            handleError(err);
+          })
+          .syncLinkRouterDistribution({
+            operation: state.filters.operation,
+            traffic: state.filters.traffic,
+            routeSlug: route,
+            startDate: state.filters.startDate,
+            endDate: state.filters.endDate,
+            window: state.filters.window,
             distribution: getDistributionPayload()
           });
       }
@@ -2666,7 +3747,7 @@
           direction = current.direction === 'desc' ? 'asc' : 'desc';
         }
         state.sort[section] = { key: key, direction: direction };
-        renderAnalysis();
+        renderAllViews();
       }
 
       function buildSortHeader(section, key, label, alignment) {
@@ -2921,10 +4002,10 @@
         }
         var rows = sortUrlRows(filteredRows || []);
         var table = document.createElement('div');
-        table.className = 'overflow-auto scroll-list-15';
+        table.className = 'relative overflow-auto scroll-list-15';
         var html = '';
         html += '<table class="w-full text-sm min-w-max">';
-        html += '<thead class="text-slate-300">';
+        html += '<thead class="text-slate-300 table-head-sticky">';
         html += '<tr>' +
           '<th class="px-3 py-2 text-left font-semibold">' + buildSortHeader('url', 'url', 'URL', 'left') + '</th>' +
           '<th class="px-3 py-2 text-right font-semibold">' + buildSortHeader('url', 'sessions', 'Sessões', 'right') + '</th>' +
@@ -3000,6 +4081,21 @@
         var sign = number > 0 ? '+' : '-';
         var formatted = Math.abs(number).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' %';
         return sign + formatted;
+      }
+
+      function formatScore(value) {
+        var number = Number(value || 0);
+        return number.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      }
+
+      function formatMultiplier(value) {
+        var number = Number(value || 0);
+        return number.toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+      }
+
+      function formatPercentFraction(value) {
+        var number = Number(value || 0) * 100;
+        return number.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' %';
       }
 
       function formatTrend(value) {
